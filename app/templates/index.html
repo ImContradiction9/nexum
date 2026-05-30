@@ -1,0 +1,2546 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nexum</title>
+  <link rel="icon" type="image/svg+xml" href="/static/icon.svg?v={{ v }}">
+  <link rel="alternate icon" type="image/png" href="/static/favicon-256.png?v={{ v }}">
+  <link rel="apple-touch-icon" href="/static/favicon-256.png?v={{ v }}">
+
+  <!-- Fonts: Fraunces (display serif) + IBM Plex Sans (UI) + IBM Plex Mono (números) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <!-- Tailwind via CDN (modo dev — em prod compilamos) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Alpine.js para interatividade leve -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+  <!-- Chart.js para gráficos -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <link rel="stylesheet" href="/static/style.css?v={{ v }}">
+</head>
+<body class="bg-zinc-950 text-zinc-100 font-sans antialiased min-h-screen">
+
+<div x-data="financeiro()" x-init="init()" class="min-h-screen">
+
+  <!-- ============ BANNER DE ATUALIZAÇÃO ============ -->
+  <div x-show="appUpdate.tem_atualizacao && !updateDispensado" x-cloak
+       class="bg-amber-500/10 border-b border-amber-500/30">
+    <div class="max-w-[1600px] mx-auto px-8 py-3 flex items-center justify-between gap-4 text-sm">
+      <div class="flex items-center gap-3 text-amber-200">
+        <span class="text-lg">⬆️</span>
+        <span>
+          Nova versão do Nexum disponível:
+          <strong x-text="appUpdate.versao_disponivel"></strong>
+          <span class="text-amber-200/60" x-text="'(você tem ' + appUpdate.versao_atual + ')'"></span>
+        </span>
+        <a x-show="appUpdate.url_release" :href="appUpdate.url_release" target="_blank"
+           class="underline text-amber-300/80 hover:text-amber-200">ver notas</a>
+      </div>
+      <div class="flex items-center gap-2">
+        <button x-show="appUpdate.instalado" @click="instalarAtualizacao()"
+                :disabled="instalandoUpdate"
+                class="px-3 py-1.5 rounded bg-amber-500 text-zinc-950 font-medium hover:bg-amber-400 disabled:opacity-50">
+          <span x-show="!instalandoUpdate">Atualizar agora</span>
+          <span x-show="instalandoUpdate">Atualizando…</span>
+        </button>
+        <a x-show="!appUpdate.instalado && appUpdate.url_release" :href="appUpdate.url_release" target="_blank"
+           class="px-3 py-1.5 rounded bg-amber-500 text-zinc-950 font-medium hover:bg-amber-400">Baixar</a>
+        <button @click="updateDispensado = true"
+                class="px-2 py-1.5 text-amber-200/60 hover:text-amber-200" title="Dispensar">✕</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ HEADER ============ -->
+  <header class="border-b border-zinc-800/80">
+    <div class="max-w-[1600px] mx-auto px-8 py-6 flex items-center justify-between">
+      <div class="flex items-center gap-6">
+        <h1 class="flex items-center" title="Nexum">
+          <img src="/static/nexum-n.png?v={{ v }}" alt="Nexum" style="height: 38px; width: auto; display: block;">
+        </h1>
+        <nav class="flex gap-1 text-sm">
+          <button @click="view='dashboard'"
+                  :class="view==='dashboard' ? 'text-amber-500' : 'text-zinc-500 hover:text-zinc-200'"
+                  class="px-3 py-1 transition">Dashboard</button>
+          <button @click="view='transacoes'; carregarTransacoes()"
+                  :class="view==='transacoes' ? 'text-amber-500' : 'text-zinc-500 hover:text-zinc-200'"
+                  class="px-3 py-1 transition">Transações</button>
+          <button @click="view='extrato'; carregarContasExtrato()"
+                  :class="view==='extrato' ? 'text-amber-500' : 'text-zinc-500 hover:text-zinc-200'"
+                  class="px-3 py-1 transition">Extrato</button>
+          <button @click="view='investimentos'; carregarInvestimentos()"
+                  :class="view==='investimentos' ? 'text-amber-500' : 'text-zinc-500 hover:text-zinc-200'"
+                  class="px-3 py-1 transition">Investimentos</button>
+          <button @click="view='metas'; carregarMetas()"
+                  :class="view==='metas' ? 'text-amber-500' : 'text-zinc-500 hover:text-zinc-200'"
+                  class="px-3 py-1 transition">Metas</button>
+          <button @click="view='config'; subView='contas'; carregarContas()"
+                  :class="view==='config' ? 'text-amber-500' : 'text-zinc-500 hover:text-zinc-200'"
+                  class="px-3 py-1 transition">Configurações</button>
+        </nav>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <button @click="atualizarTudo()" :disabled="atualizando"
+                :class="atualizando ? 'opacity-40 cursor-wait' : 'hover:text-amber-400 hover:border-amber-700'"
+                class="bg-zinc-900 border border-zinc-800 text-zinc-400 px-3 py-1.5 rounded transition flex items-center gap-1.5"
+                title="Atualizar dados">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               :class="atualizando ? 'animate-spin' : ''">
+            <path d="M21 12a9 9 0 11-3-6.7L21 8"/>
+            <path d="M21 3v5h-5"/>
+          </svg>
+          <span class="text-xs uppercase tracking-wider">Atualizar</span>
+        </button>
+        <label class="bg-amber-500 hover:bg-amber-400 text-zinc-950 px-4 py-1.5 text-sm font-medium rounded cursor-pointer transition">
+          Importar arquivo
+          <input type="file" accept=".pdf,.ofx" multiple @change="importarPDFs($event)" class="hidden">
+        </label>
+      </div>
+    </div>
+  </header>
+
+  <!-- ============ TOAST ============ -->
+  <div x-show="toast.show" x-transition
+       :class="toast.tipo==='erro' ? 'bg-red-950 border-red-800' : 'bg-emerald-950 border-emerald-800'"
+       class="fixed top-6 right-6 px-5 py-3 border rounded-lg shadow-2xl z-50 text-sm max-w-md whitespace-pre-line">
+    <div x-text="toast.msg"></div>
+  </div>
+
+  <!-- ============ DASHBOARD ============ -->
+  <main x-show="view==='dashboard'" class="max-w-[1600px] mx-auto px-8 py-10">
+
+    <!-- Seletor de período -->
+    <div class="flex items-center gap-2 mb-8 flex-wrap">
+      <span class="text-xs uppercase tracking-widest text-zinc-500 mr-2">Período</span>
+
+      <!-- Mês (select inline, comporta como preset) -->
+      <select x-model="dashboard.mes"
+              @change="periodoPreset = 'mes'; carregarDashboard()"
+              :class="periodoPreset === 'mes' ? 'bg-amber-500 text-zinc-950 border-amber-500 font-medium' : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:border-zinc-700'"
+              class="appearance-none px-3 py-1.5 text-xs rounded border transition font-mono cursor-pointer focus:outline-none focus:ring-0"
+              style="background-image: none;">
+        <template x-for="m in dashboard.meses_disponiveis" :key="m"><option :value="m" x-text="m"></option></template>
+      </select>
+
+      <!-- Demais presets -->
+      <template x-for="opt in [
+        {key: '3meses', label: 'Últimos 3 meses'},
+        {key: 'ano', label: 'Ano todo'},
+        {key: 'personalizado', label: 'Personalizado'}
+      ]" :key="opt.key">
+        <button @click="periodoPreset = opt.key; if (opt.key !== 'personalizado') carregarDashboard()"
+                :class="periodoPreset === opt.key ? 'bg-amber-500 text-zinc-950 border-amber-500' : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:border-zinc-700'"
+                class="px-3 py-1.5 text-xs rounded border transition" x-text="opt.label"></button>
+      </template>
+
+      <!-- Inputs personalizado -->
+      <div x-show="periodoPreset === 'personalizado'" class="ml-2 flex items-center gap-2">
+        <input type="date" x-model="periodoCustom.data_inicio" @change="carregarDashboard()"
+               class="bg-zinc-900 border border-zinc-800 px-2 py-1.5 text-xs rounded font-mono">
+        <span class="text-zinc-600 text-xs">a</span>
+        <input type="date" x-model="periodoCustom.data_fim" @change="carregarDashboard()"
+               class="bg-zinc-900 border border-zinc-800 px-2 py-1.5 text-xs rounded font-mono">
+      </div>
+
+      <span class="text-xs text-zinc-600 ml-auto" x-text="rotuloPeriodo()"></span>
+    </div>
+
+    <!-- Barra de blocos ocultos (mostrar de volta) -->
+    <div x-show="nBlocosOcultos() > 0" class="mb-6 flex items-center flex-wrap gap-x-2 gap-y-1 text-xs text-zinc-500">
+      <span class="text-zinc-600 uppercase tracking-wider mr-1" x-text="nBlocosOcultos() + ' bloco(s) oculto(s):'"></span>
+      <template x-for="b in blocosDashboard.filter(b => blocoOculto(b.id))" :key="b.id">
+        <button @click="mostrarBloco(b.id)"
+                class="px-2 py-0.5 border border-zinc-800 rounded hover:border-amber-700 hover:text-amber-400 transition"
+                x-text="'+ ' + b.nome"></button>
+      </template>
+      <button @click="mostrarTodosBlocos()" class="ml-2 text-zinc-600 hover:text-zinc-300 underline decoration-dotted">
+        mostrar todos
+      </button>
+    </div>
+
+    <!-- Receitas / Despesas / Saldo (kpis_principais) -->
+    <div x-show="!blocoOculto('kpis_principais')" class="relative group mb-6">
+      <button @click="ocultarBloco('kpis_principais')"
+              class="absolute right-0 -top-1 text-[10px] uppercase tracking-wider text-zinc-700 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition">
+        ocultar
+      </button>
+      <div class="grid grid-cols-3 gap-6">
+      <!-- Receitas -->
+      <div class="border-l-2 border-emerald-700 pl-6">
+        <div class="text-xs uppercase tracking-widest text-zinc-500 mb-2">Receitas</div>
+        <div class="font-serif text-4xl font-medium text-emerald-400" x-text="brl(dashboard.receitas)"></div>
+        <div x-show="dashboard.tem_mes_anterior" class="text-xs text-zinc-500 mt-1.5 flex items-center gap-2">
+          <span x-html="setaVar(dashboard.receitas, dashboard.receitas_anteriores, 'maior_melhor')"></span>
+          <span x-text="textoVar(dashboard.receitas, dashboard.receitas_anteriores)"></span>
+          <span x-text="'vs ' + brl(dashboard.receitas_anteriores) + (dashboard.modo_periodo ? ' (período anterior)' : ' em ' + dashboard.mes_anterior)"></span>
+        </div>
+      </div>
+      <!-- Despesas -->
+      <div class="border-l-2 border-red-700 pl-6">
+        <div class="text-xs uppercase tracking-widest text-zinc-500 mb-2">Despesas</div>
+        <div class="font-serif text-4xl font-medium text-red-400" x-text="brl(dashboard.despesas)"></div>
+        <div x-show="dashboard.tem_mes_anterior" class="text-xs text-zinc-500 mt-1.5 flex items-center gap-2">
+          <span x-html="setaVar(dashboard.despesas, dashboard.despesas_anteriores, 'menor_melhor')"></span>
+          <span x-text="textoVar(dashboard.despesas, dashboard.despesas_anteriores)"></span>
+          <span x-text="'vs ' + brl(dashboard.despesas_anteriores) + (dashboard.modo_periodo ? ' (período anterior)' : ' em ' + dashboard.mes_anterior)"></span>
+        </div>
+      </div>
+      <!-- Saldo -->
+      <div class="border-l-2 border-amber-600 pl-6">
+        <div class="text-xs uppercase tracking-widest text-zinc-500 mb-2">Saldo</div>
+        <div class="font-serif text-4xl font-medium" :class="dashboard.saldo >= 0 ? 'text-amber-400' : 'text-red-400'"
+             x-text="brl(dashboard.saldo)"></div>
+        <div x-show="dashboard.tem_mes_anterior" class="text-xs text-zinc-500 mt-1.5 flex items-center gap-2">
+          <span x-html="setaVar(dashboard.saldo, dashboard.saldo_anterior, 'maior_melhor')"></span>
+          <span x-text="textoVar(dashboard.saldo, dashboard.saldo_anterior)"></span>
+          <span x-text="'vs ' + brl(dashboard.saldo_anterior) + (dashboard.modo_periodo ? ' (período anterior)' : ' em ' + dashboard.mes_anterior)"></span>
+        </div>
+      </div>
+      </div>
+    </div>
+
+    <!-- Linha secundária: breakdown (Essenciais + Discricionárias + Investido) -->
+    <div x-show="(dashboard.despesas > 0 || dashboard.investido_mes > 0) && !blocoOculto('kpis_secundarios')"
+         class="relative group mb-6">
+      <button @click="ocultarBloco('kpis_secundarios')"
+              class="absolute right-0 -top-1 text-[10px] uppercase tracking-wider text-zinc-700 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition">
+        ocultar
+      </button>
+      <div class="grid grid-cols-3 gap-6">
+      <!-- Essenciais -->
+      <div class="border-l-2 border-zinc-700 pl-6">
+        <div class="text-xs uppercase tracking-widest text-zinc-500 mb-2 flex items-baseline gap-2">
+          <span>Despesas essenciais</span>
+          <span class="text-zinc-600 font-mono text-[10px]"
+                x-text="dashboard.despesas > 0 ? Math.round((dashboard.despesas_essenciais / dashboard.despesas) * 100) + '% das despesas' : ''"></span>
+        </div>
+        <div class="font-serif text-3xl font-medium text-zinc-200" x-text="brl(dashboard.despesas_essenciais)"></div>
+        <div x-show="dashboard.tem_mes_anterior" class="text-xs text-zinc-500 mt-1.5 flex items-center gap-2">
+          <span x-html="setaVar(dashboard.despesas_essenciais, dashboard.despesas_essenciais_anteriores, 'menor_melhor')"></span>
+          <span x-text="textoVar(dashboard.despesas_essenciais, dashboard.despesas_essenciais_anteriores)"></span>
+          <span x-text="'vs ' + brl(dashboard.despesas_essenciais_anteriores)"></span>
+        </div>
+      </div>
+      <!-- Discricionárias -->
+      <div class="border-l-2 border-amber-700/60 pl-6">
+        <div class="text-xs uppercase tracking-widest text-zinc-500 mb-2 flex items-baseline gap-2">
+          <span>Despesas discricionárias</span>
+          <span class="text-zinc-600 font-mono text-[10px]"
+                x-text="dashboard.despesas > 0 ? Math.round((dashboard.despesas_discricionarias / dashboard.despesas) * 100) + '% das despesas' : ''"></span>
+        </div>
+        <div class="font-serif text-3xl font-medium text-amber-300" x-text="brl(dashboard.despesas_discricionarias)"></div>
+        <div x-show="dashboard.tem_mes_anterior" class="text-xs text-zinc-500 mt-1.5 flex items-center gap-2">
+          <span x-html="setaVar(dashboard.despesas_discricionarias, dashboard.despesas_discricionarias_anteriores, 'menor_melhor')"></span>
+          <span x-text="textoVar(dashboard.despesas_discricionarias, dashboard.despesas_discricionarias_anteriores)"></span>
+          <span x-text="'vs ' + brl(dashboard.despesas_discricionarias_anteriores)"></span>
+        </div>
+      </div>
+      <!-- Investido -->
+      <div class="border-l-2 border-emerald-600/60 pl-6">
+        <div class="text-xs uppercase tracking-widest text-zinc-500 mb-2 flex items-baseline gap-2">
+          <span x-text="labelInvestido()"></span>
+          <span class="text-zinc-600 font-mono text-[10px]"
+                x-text="dashboard.receitas > 0 && dashboard.investido_mes > 0 ? Math.round((dashboard.investido_mes / dashboard.receitas) * 100) + '% da receita' : ''"></span>
+        </div>
+        <div class="font-serif text-3xl font-medium" :class="dashboard.investido_mes > 0 ? 'text-emerald-400' : 'text-zinc-600'" x-text="brl(dashboard.investido_mes)"></div>
+        <div x-show="dashboard.tem_mes_anterior" class="text-xs text-zinc-500 mt-1.5 flex items-center gap-2">
+          <span x-html="setaVar(dashboard.investido_mes, dashboard.investido_mes_anterior, 'maior_melhor')"></span>
+          <span x-text="textoVar(dashboard.investido_mes, dashboard.investido_mes_anterior)"></span>
+          <span x-text="'vs ' + brl(dashboard.investido_mes_anterior)"></span>
+        </div>
+      </div>
+      </div>
+    </div>
+
+    <!-- Resumo de empréstimos do período -->
+    <div x-show="dashboard.emprestimos && (dashboard.emprestimos.emprestado > 0 || dashboard.emprestimos.recebido > 0) && !blocoOculto('emprestimos')"
+         class="bg-zinc-900/40 border border-zinc-800 rounded-lg p-5 mb-8 relative group">
+      <button @click="ocultarBloco('emprestimos')"
+              class="absolute right-3 top-3 text-[10px] uppercase tracking-wider text-zinc-700 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition">
+        ocultar
+      </button>
+      <div class="flex items-baseline justify-between mb-4">
+        <h3 class="text-sm uppercase tracking-widest text-zinc-400">Empréstimos a terceiros · período</h3>
+        <span class="text-xs text-zinc-600">Despesa = emprestou · Receita = recebeu de volta</span>
+      </div>
+      <div class="grid grid-cols-3 gap-6 mb-4">
+        <div>
+          <div class="text-xs uppercase tracking-wider text-zinc-500 mb-1">Emprestado</div>
+          <div class="font-serif text-2xl font-medium text-amber-300" x-text="brl(dashboard.emprestimos.emprestado)"></div>
+        </div>
+        <div>
+          <div class="text-xs uppercase tracking-wider text-zinc-500 mb-1">Recebido</div>
+          <div class="font-serif text-2xl font-medium text-emerald-400" x-text="brl(dashboard.emprestimos.recebido)"></div>
+        </div>
+        <div>
+          <div class="text-xs uppercase tracking-wider text-zinc-500 mb-1">A receber</div>
+          <div class="font-serif text-2xl font-medium"
+               :class="dashboard.emprestimos.saldo > 0 ? 'text-amber-300' : 'text-zinc-500'"
+               x-text="brl(dashboard.emprestimos.saldo)"></div>
+        </div>
+      </div>
+      <div x-show="dashboard.emprestimos.por_pessoa && dashboard.emprestimos.por_pessoa.length > 0">
+        <div class="text-xs uppercase tracking-wider text-zinc-500 mb-2 mt-3">Por pessoa</div>
+        <div class="space-y-1.5">
+          <template x-for="p in dashboard.emprestimos.por_pessoa" :key="p.nome">
+            <div class="flex items-center justify-between text-sm py-1.5 border-b border-zinc-800/60">
+              <span class="text-zinc-300" x-text="p.nome"></span>
+              <div class="flex items-center gap-4 font-mono text-xs">
+                <span class="text-amber-400" x-text="'+' + brl(p.emprestado).replace('R$ ', '')" :title="'Emprestou ' + brl(p.emprestado)"></span>
+                <span class="text-emerald-400" x-text="'-' + brl(p.recebido).replace('R$ ', '')" :title="'Recebeu de volta ' + brl(p.recebido)"></span>
+                <span class="text-zinc-300 font-medium w-24 text-right" x-text="brl(p.saldo)"></span>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
+
+    <!-- Avisos -->
+    <div x-show="dashboard.n_nao_categorizadas + dashboard.n_nao_atribuidas > 0 && !blocoOculto('alertas')"
+         class="bg-amber-950/30 border border-amber-900/50 px-5 py-3 rounded-lg mb-10 text-sm flex items-center justify-between relative group">
+      <div>
+        <span class="text-amber-400">!</span>
+        <span x-show="dashboard.n_nao_categorizadas > 0">
+          <span class="font-mono text-amber-400" x-text="dashboard.n_nao_categorizadas"></span> sem categoria
+        </span>
+        <span x-show="dashboard.n_nao_categorizadas > 0 && dashboard.n_nao_atribuidas > 0" class="text-zinc-600 mx-2">·</span>
+        <span x-show="dashboard.n_nao_atribuidas > 0">
+          <span class="font-mono text-amber-400" x-text="dashboard.n_nao_atribuidas"></span> sem atribuição
+        </span>
+        <span class="text-zinc-500 ml-2">no mês selecionado</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <button @click="view='transacoes'; filtros.nao_categorizado=true; filtros.nao_atribuido=true; carregarTransacoes()"
+                class="text-amber-400 hover:text-amber-300 text-xs uppercase tracking-wider">
+          Resolver →
+        </button>
+        <button @click="ocultarBloco('alertas')"
+                class="text-[10px] uppercase tracking-wider text-zinc-700 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition">
+          ocultar
+        </button>
+      </div>
+    </div>
+
+    <!-- GRÁFICOS -->
+    <div x-show="!blocoOculto('graficos')" class="group mb-12">
+      <div class="flex items-center justify-end mb-2 h-4">
+        <button @click="ocultarBloco('graficos')"
+                class="text-[10px] uppercase tracking-wider text-zinc-700 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition">
+          ocultar
+        </button>
+      </div>
+      <div class="grid grid-cols-2 gap-6">
+      <section class="border border-zinc-800 rounded-lg p-5">
+        <div class="flex items-center justify-between mb-4 gap-3">
+          <h2 class="font-serif text-lg text-zinc-300" x-text="tituloGraficoAtual()"></h2>
+          <select :value="tipoGrafico" @change="trocarTipoGrafico($event.target.value)"
+                  class="bg-zinc-900 border border-zinc-800 text-zinc-400 text-xs rounded px-2 py-1.5 focus:border-amber-700 focus:outline-none cursor-pointer">
+            <template x-for="o in opcoesGrafico" :key="o.id">
+              <option :value="o.id" x-text="o.nome"></option>
+            </template>
+          </select>
+        </div>
+        <div class="relative" style="height: 280px;">
+          <canvas id="chart-categoria"></canvas>
+        </div>
+      </section>
+      <section class="border border-zinc-800 rounded-lg p-5">
+        <h2 class="font-serif text-lg mb-4 text-zinc-300">Evolução mensal (12 meses)</h2>
+        <div class="relative" style="height: 280px;">
+          <canvas id="chart-evolucao"></canvas>
+        </div>
+      </section>
+      </div>
+    </div>
+
+    <!-- PRÓXIMOS MESES (parcelas futuras) -->
+    <section x-show="previsao.meses && previsao.meses.length > 0 && !blocoOculto('previsao')" class="mb-12 group">
+      <div class="flex items-baseline justify-between mb-4">
+        <h2 class="font-serif text-xl text-zinc-300">Próximos meses</h2>
+        <div class="flex items-baseline gap-4">
+          <span class="text-xs text-zinc-500">parcelas já comprometidas</span>
+          <button @click="ocultarBloco('previsao')"
+                  class="text-[10px] uppercase tracking-wider text-zinc-700 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition">
+            ocultar
+          </button>
+        </div>
+      </div>
+      <div class="grid grid-cols-3 gap-4">
+        <template x-for="m in previsao.meses" :key="m.mes">
+          <div class="border border-zinc-800 rounded-lg p-4 hover:border-zinc-700 transition cursor-pointer"
+               @click="previsaoExpandida = (previsaoExpandida === m.mes ? null : m.mes)">
+            <div class="flex items-baseline justify-between mb-2">
+              <span class="font-mono text-sm text-zinc-500" x-text="m.mes"></span>
+              <span class="text-xs text-zinc-600" x-text="m.n + ' parc.'"></span>
+            </div>
+            <div class="font-serif text-2xl text-amber-400 mb-1" x-text="brl(m.total)"></div>
+            <div class="text-xs text-zinc-600" x-text="previsaoExpandida === m.mes ? 'fechar ↑' : 'ver detalhes ↓'"></div>
+
+            <!-- Lista expandida -->
+            <div x-show="previsaoExpandida === m.mes" x-transition class="mt-4 pt-4 border-t border-zinc-900 space-y-1.5">
+              <template x-for="it in m.items.slice(0, 30)" :key="it.transacao_origem_id + it.parcela_atual_no_futuro">
+                <div class="flex items-center gap-2 text-xs">
+                  <span x-text="it.icone || '•'" class="w-4"></span>
+                  <span class="flex-1 truncate text-zinc-300" :title="it.descricao" x-text="it.descricao"></span>
+                  <span class="font-mono text-zinc-600" x-text="it.parcela_atual_no_futuro"></span>
+                  <span class="font-mono text-zinc-300" x-text="brl(it.valor)"></span>
+                </div>
+              </template>
+              <div x-show="m.items.length > 30" class="text-xs text-zinc-600 italic pt-2">
+                + <span x-text="m.items.length - 30"></span> outras...
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+    </section>
+
+    <div class="grid grid-cols-2 gap-12">
+      <!-- POR CATEGORIA (colapsável; fechado por padrão) -->
+      <section x-show="!blocoOculto('por_categoria')" class="relative group">
+        <div class="flex items-center justify-between mb-4">
+          <button @click="togglarBloco('por_categoria')"
+                  class="flex items-baseline gap-2 text-left hover:opacity-90 transition">
+            <span class="text-zinc-600 text-sm" x-text="blocoAberto('por_categoria') ? '▾' : '▸'"></span>
+            <h2 class="font-serif text-xl text-zinc-300">Por categoria</h2>
+            <span class="text-xs text-zinc-600" x-text="'(' + dashboard.por_categoria.length + ')'"></span>
+          </button>
+          <button @click="ocultarBloco('por_categoria')"
+                  class="text-[10px] uppercase tracking-wider text-zinc-700 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition">
+            ocultar
+          </button>
+        </div>
+        <div x-show="blocoAberto('por_categoria')" x-transition class="space-y-1">
+          <template x-for="c in dashboard.por_categoria" :key="c.nome">
+            <div class="flex items-center gap-3 py-2 border-b border-zinc-900 group">
+              <span x-text="c.icone || '•'" class="text-lg w-6"></span>
+              <span class="flex-1 text-sm" x-text="c.nome"></span>
+              <span class="font-mono text-sm text-zinc-300" x-text="brl(c.total)"></span>
+              <span class="font-mono text-xs text-zinc-600 w-12 text-right"
+                    x-text="(c.total / dashboard.despesas * 100).toFixed(1) + '%'"></span>
+            </div>
+          </template>
+        </div>
+        <div x-show="!blocoAberto('por_categoria')" class="text-xs text-zinc-600 italic">
+          Clique no título pra expandir a lista completa.
+        </div>
+      </section>
+
+      <!-- POR ATRIBUIÇÃO (colapsável) -->
+      <section x-show="!blocoOculto('por_atribuicao')" class="relative group">
+        <div class="flex items-center justify-between mb-4">
+          <button @click="togglarBloco('por_atribuicao')"
+                  class="flex items-baseline gap-2 text-left hover:opacity-90 transition">
+            <span class="text-zinc-600 text-sm" x-text="blocoAberto('por_atribuicao') ? '▾' : '▸'"></span>
+            <h2 class="font-serif text-xl text-zinc-300">Por atribuição</h2>
+            <span class="text-xs text-zinc-600" x-text="'(' + dashboard.por_atribuicao.length + ')'"></span>
+          </button>
+          <button @click="ocultarBloco('por_atribuicao')"
+                  class="text-[10px] uppercase tracking-wider text-zinc-700 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition">
+            ocultar
+          </button>
+        </div>
+        <div x-show="blocoAberto('por_atribuicao')" x-transition class="space-y-1">
+          <template x-for="a in dashboard.por_atribuicao" :key="a.nome">
+            <div class="flex items-center gap-3 py-2 border-b border-zinc-900">
+              <span class="w-2 h-2 rounded-full" :style="`background-color: ${a.cor}`"></span>
+              <span class="flex-1 text-sm" x-text="a.nome"></span>
+              <span class="text-xs text-zinc-600 uppercase tracking-wider" x-text="a.tipo"></span>
+              <span class="font-mono text-sm text-zinc-300" x-text="brl(a.total)"></span>
+              <span class="font-mono text-xs text-zinc-600 w-12 text-right"
+                    x-text="(a.total / dashboard.despesas * 100).toFixed(1) + '%'"></span>
+            </div>
+          </template>
+        </div>
+        <div x-show="!blocoAberto('por_atribuicao')" class="text-xs text-zinc-600 italic">
+          Clique no título pra expandir a lista completa.
+        </div>
+      </section>
+
+      <!-- POR BANCO (colapsável) -->
+      <section x-show="!blocoOculto('por_banco')" class="relative group">
+        <div class="flex items-center justify-between mb-4">
+          <button @click="togglarBloco('por_banco')"
+                  class="flex items-baseline gap-2 text-left hover:opacity-90 transition">
+            <span class="text-zinc-600 text-sm" x-text="blocoAberto('por_banco') ? '▾' : '▸'"></span>
+            <h2 class="font-serif text-xl text-zinc-300">Por banco</h2>
+            <span class="text-xs text-zinc-600" x-text="'(' + dashboard.por_banco.length + ')'"></span>
+          </button>
+          <button @click="ocultarBloco('por_banco')"
+                  class="text-[10px] uppercase tracking-wider text-zinc-700 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition">
+            ocultar
+          </button>
+        </div>
+        <div x-show="blocoAberto('por_banco')" x-transition class="space-y-1">
+          <template x-for="b in dashboard.por_banco" :key="b.nome">
+            <div class="flex items-center gap-3 py-2 border-b border-zinc-900">
+              <span class="flex-1 text-sm" x-text="b.nome"></span>
+              <span class="font-mono text-sm text-zinc-300" x-text="brl(b.total)"></span>
+            </div>
+          </template>
+        </div>
+        <div x-show="!blocoAberto('por_banco')" class="text-xs text-zinc-600 italic">
+          Clique no título pra expandir a lista completa.
+        </div>
+      </section>
+
+      <!-- POR FORMA (colapsável) -->
+      <section x-show="!blocoOculto('por_forma')" class="relative group">
+        <div class="flex items-center justify-between mb-4">
+          <button @click="togglarBloco('por_forma')"
+                  class="flex items-baseline gap-2 text-left hover:opacity-90 transition">
+            <span class="text-zinc-600 text-sm" x-text="blocoAberto('por_forma') ? '▾' : '▸'"></span>
+            <h2 class="font-serif text-xl text-zinc-300">Por forma de pagamento</h2>
+            <span class="text-xs text-zinc-600" x-text="'(' + dashboard.por_forma.length + ')'"></span>
+          </button>
+          <button @click="ocultarBloco('por_forma')"
+                  class="text-[10px] uppercase tracking-wider text-zinc-700 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition">
+            ocultar
+          </button>
+        </div>
+        <div x-show="blocoAberto('por_forma')" x-transition class="space-y-1">
+          <template x-for="f in dashboard.por_forma" :key="f.nome">
+            <div class="flex items-center gap-3 py-2 border-b border-zinc-900">
+              <span class="flex-1 text-sm" x-text="f.nome"></span>
+              <span class="font-mono text-sm text-zinc-300" x-text="brl(f.total)"></span>
+            </div>
+          </template>
+        </div>
+        <div x-show="!blocoAberto('por_forma')" class="text-xs text-zinc-600 italic">
+          Clique no título pra expandir a lista completa.
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- ============ TRANSAÇÕES ============ -->
+  <main x-show="view==='transacoes'" class="max-w-[1600px] mx-auto px-8 py-8">
+    <!-- Filtros -->
+    <div class="flex items-center gap-3 mb-6 flex-wrap">
+      <input type="text" placeholder="Buscar descrição..." x-model="filtros.busca" @input.debounce.300ms="carregarTransacoes()"
+             class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-72">
+      <select x-model="filtros.mes" @change="carregarTransacoes()" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded font-mono">
+        <option value="">Todos os meses</option>
+        <template x-for="m in dashboard.meses_disponiveis"><option :value="m" x-text="m"></option></template>
+      </select>
+      <select x-model="filtros.banco_id" @change="carregarTransacoes()" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded">
+        <option value="">Todos os bancos</option>
+        <template x-for="b in bancos"><option :value="b.id" x-text="b.nome"></option></template>
+      </select>
+      <select x-model="filtros.tipo_conta" @change="carregarTransacoes()" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded">
+        <option value="">Todos os tipos</option>
+        <option value="Conta Corrente">Conta Corrente</option>
+        <option value="Conta Poupança">Conta Poupança</option>
+        <option value="Cartão de Crédito">Cartão de Crédito</option>
+        <option value="Carteira">Carteira</option>
+        <option value="Investimento">Investimento</option>
+      </select>
+      <select x-model="filtros.categoria_id" @change="carregarTransacoes()" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded">
+        <option value="">Todas as categorias</option>
+        <template x-for="c in categorias"><option :value="c.id" x-text="c.nome"></option></template>
+      </select>
+      <select x-model="filtros.atribuicao_id" @change="carregarTransacoes()" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded">
+        <option value="">Todas as atribuições</option>
+        <template x-for="a in atribuicoes"><option :value="a.id" x-text="a.nome"></option></template>
+      </select>
+      <label class="text-sm text-zinc-400 flex items-center gap-2">
+        <input type="checkbox" x-model="filtros.nao_categorizado" @change="carregarTransacoes()" class="accent-amber-500">
+        Sem categoria
+      </label>
+      <label class="text-sm text-zinc-400 flex items-center gap-2">
+        <input type="checkbox" x-model="filtros.nao_atribuido" @change="carregarTransacoes()" class="accent-amber-500">
+        Sem atribuição
+      </label>
+      <label class="text-sm text-zinc-400 flex items-center gap-2"
+             title="Por padrão, transações de Pagamento de Fatura e Transferência entre Contas ficam ocultas">
+        <input type="checkbox" x-model="filtros.incluir_transferencias" @change="carregarTransacoes()" class="accent-amber-500">
+        Mostrar transferências
+      </label>
+      <span class="text-sm text-zinc-500 ml-auto flex items-center gap-3">
+        <button @click="detectarEstornos()" class="text-xs text-zinc-500 hover:text-amber-400 uppercase tracking-wider"
+                title="Analisa receitas e identifica estornos automaticamente">
+          ↶ Detectar estornos
+        </button>
+        <button @click="abrirModalNovaTransacao()" class="text-xs text-amber-500 hover:text-amber-400 uppercase tracking-wider">
+          + Nova transação
+        </button>
+        <span>
+          <span class="font-mono" x-text="transacoes.length"></span> de
+          <span class="font-mono" x-text="totalTransacoes"></span>
+        </span>
+      </span>
+    </div>
+
+    <!-- Banner persistente de suspeitas de duplicata -->
+    <div x-show="nSuspeitas > 0"
+         class="bg-amber-950/40 border border-amber-800/60 rounded-lg p-4 mb-4 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <span class="text-amber-400 text-lg">⚠</span>
+        <div>
+          <div class="text-sm text-amber-200">
+            <span class="font-mono font-semibold" x-text="nSuspeitas"></span>
+            transaç<span x-show="nSuspeitas > 1">ões</span><span x-show="nSuspeitas <= 1">ão</span> suspeita<span x-show="nSuspeitas > 1">s</span> de duplicata
+            aguardando revisão
+          </div>
+          <div class="text-xs text-zinc-400 mt-0.5">Não estão contando nos totais até você decidir</div>
+        </div>
+      </div>
+      <button @click="abrirRevisaoSuspeitas()"
+              class="bg-amber-500 text-zinc-950 px-4 py-2 text-xs font-medium rounded uppercase tracking-wider hover:bg-amber-400">
+        Revisar
+      </button>
+    </div>
+
+    <!-- Totais monetários da listagem -->
+    <div x-show="transacoes.length > 0" class="flex items-center gap-6 mb-4 text-xs">
+      <div class="flex items-center gap-2">
+        <span class="uppercase tracking-wider text-zinc-500">Receitas</span>
+        <span class="font-mono text-emerald-400" x-text="brl(totaisListagem.receitas)"></span>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="uppercase tracking-wider text-zinc-500">Despesas</span>
+        <span class="font-mono text-red-400" x-text="brl(totaisListagem.despesas)"></span>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="uppercase tracking-wider text-zinc-500">Saldo</span>
+        <span class="font-mono font-semibold"
+              :class="totaisListagem.saldo >= 0 ? 'text-emerald-400' : 'text-red-400'"
+              x-text="brl(totaisListagem.saldo)"></span>
+      </div>
+      <span class="text-zinc-700 ml-2">· filtro atual</span>
+    </div>
+
+    <!-- Barra de ação em massa -->
+    <div x-show="selecionadas.length > 0"
+         x-transition.opacity
+         class="bg-amber-950/30 border border-amber-800/50 rounded-lg p-3 mb-3 flex items-center gap-3 flex-wrap">
+      <span class="text-sm text-amber-300 font-medium">
+        <span x-text="selecionadas.length"></span> selecionada(s)
+      </span>
+      <div class="h-4 border-l border-amber-800/50"></div>
+
+      <label class="flex items-center gap-1.5 text-xs text-zinc-300 cursor-pointer">
+        <input type="checkbox" x-model="bulkForm.aplicar_categoria" class="accent-amber-500">
+        Categoria
+      </label>
+      <select x-model="bulkForm.categoria_id"
+              :disabled="!bulkForm.aplicar_categoria"
+              class="bg-zinc-900 border border-zinc-800 px-2 py-1 text-xs rounded disabled:opacity-40">
+        <option value="">— sem categoria —</option>
+        <template x-for="c in categorias" :key="c.id">
+          <option :value="c.id" x-text="c.nome"></option>
+        </template>
+      </select>
+
+      <label class="flex items-center gap-1.5 text-xs text-zinc-300 cursor-pointer">
+        <input type="checkbox" x-model="bulkForm.aplicar_atribuicao" class="accent-amber-500">
+        Atribuição
+      </label>
+      <select x-model="bulkForm.atribuicao_id"
+              :disabled="!bulkForm.aplicar_atribuicao"
+              class="bg-zinc-900 border border-zinc-800 px-2 py-1 text-xs rounded disabled:opacity-40">
+        <option value="">— sem atribuição —</option>
+        <template x-for="a in atribuicoes" :key="a.id">
+          <option :value="a.id" x-text="a.nome"></option>
+        </template>
+      </select>
+
+      <button @click="aplicarEmMassa()"
+              :disabled="!bulkForm.aplicar_categoria && !bulkForm.aplicar_atribuicao"
+              class="bg-amber-500 text-zinc-950 px-3 py-1.5 text-xs font-medium rounded hover:bg-amber-400 disabled:opacity-40 disabled:cursor-not-allowed">
+        Aplicar
+      </button>
+      <button @click="limparSelecao()"
+              class="text-xs text-zinc-400 hover:text-zinc-200 px-2 py-1.5">
+        Limpar seleção
+      </button>
+    </div>
+
+    <!-- Tabela -->
+    <div class="border border-zinc-800 rounded-lg overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="bg-zinc-900 text-zinc-400 text-xs uppercase tracking-wider">
+          <tr>
+            <th class="px-3 py-3 w-8">
+              <input type="checkbox"
+                     :checked="todasSelecionadas()"
+                     @change="toggleTodas()"
+                     class="accent-amber-500 cursor-pointer"
+                     title="Selecionar/desmarcar todas">
+            </th>
+            <th @click="toggleOrdem('data')" class="text-left px-4 py-3 font-medium cursor-pointer hover:text-zinc-200 select-none">
+              Data <span x-text="setaOrdem('data')" class="text-amber-500"></span>
+            </th>
+            <th @click="toggleOrdem('descricao')" class="text-left px-4 py-3 font-medium cursor-pointer hover:text-zinc-200 select-none">
+              Transação <span x-text="setaOrdem('descricao')" class="text-amber-500"></span>
+            </th>
+            <th @click="toggleOrdem('descricao_personalizada')" class="text-left px-4 py-3 font-medium cursor-pointer hover:text-zinc-200 select-none">
+              Descrição <span x-text="setaOrdem('descricao_personalizada')" class="text-amber-500"></span>
+            </th>
+            <th @click="toggleOrdem('valor')" class="text-right px-4 py-3 font-medium cursor-pointer hover:text-zinc-200 select-none">
+              <span x-text="setaOrdem('valor')" class="text-amber-500"></span> Valor
+            </th>
+            <th @click="toggleOrdem('banco')" class="text-left px-4 py-3 font-medium cursor-pointer hover:text-zinc-200 select-none">
+              Banco <span x-text="setaOrdem('banco')" class="text-amber-500"></span>
+            </th>
+            <th @click="toggleOrdem('tipo')" class="text-left px-4 py-3 font-medium cursor-pointer hover:text-zinc-200 select-none">
+              Tipo <span x-text="setaOrdem('tipo')" class="text-amber-500"></span>
+            </th>
+            <th @click="toggleOrdem('categoria')" class="text-left px-4 py-3 font-medium cursor-pointer hover:text-zinc-200 select-none">
+              Categoria <span x-text="setaOrdem('categoria')" class="text-amber-500"></span>
+            </th>
+            <th @click="toggleOrdem('atribuicao')" class="text-left px-4 py-3 font-medium cursor-pointer hover:text-zinc-200 select-none">
+              Atribuição <span x-text="setaOrdem('atribuicao')" class="text-amber-500"></span>
+            </th>
+            <th class="text-center px-2 py-3 font-medium" title="Essencial (★) ou discricionário (☆)">
+              Ess.
+            </th>
+            <th @click="toggleOrdem('mes_referencia')" class="text-left px-4 py-3 font-medium cursor-pointer hover:text-zinc-200 select-none">
+              Mês ref. <span x-text="setaOrdem('mes_referencia')" class="text-amber-500"></span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="t in transacoesOrdenadas()" :key="t.id">
+            <tr class="border-t border-zinc-900 group"
+                :class="estaSelecionada(t.id) ? 'bg-amber-950/20' : 'hover:bg-zinc-900/40'">
+              <td class="px-3 py-2.5 w-8">
+                <input type="checkbox"
+                       :checked="estaSelecionada(t.id)"
+                       @change="toggleSelecao(t.id)"
+                       class="accent-amber-500 cursor-pointer">
+              </td>
+              <td class="px-4 py-2.5 font-mono text-xs text-zinc-400 whitespace-nowrap" x-text="formatarData(t.data)"></td>
+
+              <!-- Transação (do PDF, imutável) -->
+              <td class="px-4 py-2.5 max-w-xs">
+                <div class="text-zinc-400 text-xs truncate flex items-center gap-1.5" :title="t.descricao">
+                  <span x-show="t.estorno_de_id" class="text-emerald-400" title="Estorno de uma compra anterior">↶</span>
+                  <span x-text="t.descricao"></span>
+                </div>
+                <div x-show="t.parcela" class="text-xs text-zinc-600 mt-0.5">parc. <span x-text="t.parcela" class="font-mono"></span></div>
+              </td>
+
+              <!-- Descrição editável -->
+              <td class="px-4 py-2.5 max-w-xs">
+                <input
+                  type="text"
+                  :value="t.descricao_personalizada || ''"
+                  :placeholder="t.descricao"
+                  @blur="salvarDescricaoPersonalizada(t.id, $event.target.value)"
+                  @keyup.enter="$event.target.blur()"
+                  class="bg-transparent border-0 hover:bg-zinc-800 focus:bg-zinc-800 px-1 py-0.5 rounded w-full text-sm placeholder:text-zinc-600 placeholder:italic"
+                  :class="t.descricao_personalizada ? 'text-zinc-100' : 'text-zinc-500'"
+                />
+              </td>
+
+              <td class="px-4 py-2.5 text-right font-mono whitespace-nowrap"
+                  :class="t.eh_abatedora ? 'text-emerald-400' : (t.tipo==='Receita' ? 'text-emerald-400' : 'text-zinc-200')"
+                  x-text="t.eh_abatedora ? ('−' + brl(t.valor)) : ((t.tipo==='Receita'?'+':'') + brl(t.valor))"></td>
+
+              <!-- Banco -->
+              <td class="px-4 py-2.5 text-zinc-300 text-xs whitespace-nowrap" x-text="t.banco || '—'"></td>
+              <!-- Tipo (forma de pagamento) -->
+              <td class="px-4 py-2.5 text-zinc-400 text-xs whitespace-nowrap" x-text="t.forma_pagamento || '—'"></td>
+
+              <td class="px-4 py-2.5">
+                <select x-effect="categorias.length; $el.value = t.categoria_id || ''"
+                        @change="atualizarTransacao(t.id, 'categoria_id', $event.target.value || null)"
+                        class="bg-transparent border-0 hover:bg-zinc-800 px-1 py-0.5 rounded text-xs cursor-pointer w-full"
+                        :class="!t.categoria_id ? 'text-amber-500' : (t.categoria_origem === 'manual' ? 'text-zinc-100' : 'text-zinc-400')">
+                  <option value="">— sem categoria —</option>
+                  <template x-for="c in categorias" :key="c.id">
+                    <option :value="c.id" x-text="c.nome"></option>
+                  </template>
+                </select>
+              </td>
+              <td class="px-4 py-2.5">
+                <select x-effect="atribuicoes.length; $el.value = t.atribuicao_id || ''"
+                        @change="atualizarTransacao(t.id, 'atribuicao_id', $event.target.value || null)"
+                        class="bg-transparent border-0 hover:bg-zinc-800 px-1 py-0.5 rounded text-xs cursor-pointer w-full"
+                        :class="!t.atribuicao_id ? 'text-amber-500' : (t.atribuicao_origem === 'manual' ? 'text-zinc-100' : 'text-zinc-400')">
+                  <option value="">— sem atribuição —</option>
+                  <template x-for="a in atribuicoes" :key="a.id">
+                    <option :value="a.id" x-text="a.nome + ' (' + a.tipo + ')'"></option>
+                  </template>
+                </select>
+              </td>
+              <td class="px-2 py-2.5 text-center">
+                <button @click="toggleEssencial(t)"
+                        class="text-base leading-none hover:scale-125 transition-transform"
+                        :class="t.essencial ? (t.essencial_override !== null ? 'text-amber-400' : 'text-zinc-600 hover:text-amber-400') : (t.essencial_override !== null ? 'text-zinc-300' : 'text-zinc-600 hover:text-zinc-300')"
+                        :title="t.essencial_override !== null ? ('Override: ' + (t.essencial ? 'essencial' : 'discricionário') + '. Clique pra voltar ao padrão da categoria (' + (t.categoria_essencial ? 'essencial' : 'discricionário') + ').') : ('Padrão da categoria: ' + (t.essencial ? 'essencial ★' : 'discricionário ☆') + '. Clique pra inverter como exceção.')"
+                        x-text="t.essencial ? '★' : '☆'"></button>
+              </td>
+              <td class="px-4 py-2.5 font-mono text-xs text-zinc-500 whitespace-nowrap" x-text="t.mes_referencia"></td>
+            </tr>
+          </template>
+          <tr x-show="transacoes.length === 0">
+            <td colspan="11" class="px-4 py-8 text-center text-zinc-600 text-sm">Nenhuma transação encontrada</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+
+  <!-- ============ EXTRATO ============ -->
+  <main x-show="view==='extrato'" class="max-w-[1600px] mx-auto px-8 py-8">
+    <div class="flex items-baseline justify-between mb-6">
+      <h2 class="font-serif text-2xl">Extrato bancário</h2>
+      <div class="text-xs text-zinc-500">
+        Visão por conta corrente — todas as movimentações com saldo acumulado
+      </div>
+    </div>
+
+    <!-- Sem contas -->
+    <div x-show="contasExtrato.length === 0"
+         class="border border-zinc-800 rounded-lg p-12 text-center text-zinc-500">
+      <div class="font-serif text-lg mb-2">Sem contas correntes com transações</div>
+      <div class="text-sm">Importe um extrato OFX em <span class="text-amber-500">Importar arquivo</span> pra começar.</div>
+    </div>
+
+    <!-- Seletor de conta + mês -->
+    <div x-show="contasExtrato.length > 0" class="flex items-center gap-3 mb-6 flex-wrap">
+      <select x-model="extrato.conta_id" @change="carregarExtrato()"
+              class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded">
+        <option value="">— Selecione uma conta —</option>
+        <template x-for="c in contasExtrato" :key="c.id">
+          <option :value="c.id"
+                  x-text="c.nome + (c.titular ? ' (' + c.titular + ')' : '')"></option>
+        </template>
+      </select>
+
+      <select x-show="extrato.conta_id && extrato.meses_disponiveis.length > 0"
+              x-model="extrato.mes" @change="carregarExtrato()"
+              class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded font-mono">
+        <option value="">Todos os meses</option>
+        <template x-for="m in extrato.meses_disponiveis"><option :value="m" x-text="m"></option></template>
+      </select>
+    </div>
+
+    <!-- Cabeçalho do extrato (saldos) -->
+    <div x-show="extrato.conta_id && extrato.items && extrato.items.length > 0"
+         class="border border-zinc-800 rounded-lg p-5 mb-4">
+      <div class="grid grid-cols-3 gap-6">
+        <div>
+          <div class="text-xs uppercase tracking-widest text-zinc-500 mb-2">Saldo inicial</div>
+          <div class="font-mono text-2xl text-zinc-300" x-text="brl(extrato.saldo_inicial)"></div>
+          <div class="text-xs text-zinc-600 mt-1">
+            <span x-show="extrato.fonte_saldo === 'ofx'" class="text-emerald-600">● do extrato OFX</span>
+            <span x-show="extrato.fonte_saldo === 'manual'" class="text-blue-400">
+              ● a partir do saldo cadastrado em <span x-text="extrato.conta.saldo_inicial_data"></span>
+            </span>
+            <span x-show="extrato.fonte_saldo === 'zero'" class="text-amber-600">
+              ● começando do zero —
+              <button @click="modalSaldo.show = true; modalSaldo.valor = ''; modalSaldo.data = ''"
+                      class="text-amber-400 hover:text-amber-300 underline">cadastrar saldo manual</button>
+            </span>
+          </div>
+          <div x-show="extrato.conta.saldo_inicial_manual !== null && extrato.fonte_saldo !== 'manual'"
+               class="text-xs text-zinc-600 mt-1">
+            <button @click="modalSaldo.show = true;
+                            modalSaldo.valor = extrato.conta.saldo_inicial_manual;
+                            modalSaldo.data = extrato.conta.saldo_inicial_data"
+                    class="text-zinc-500 hover:text-zinc-300 underline">editar saldo manual</button>
+          </div>
+        </div>
+        <div>
+          <div class="text-xs uppercase tracking-widest text-zinc-500 mb-2">Saldo final calculado</div>
+          <div class="font-mono text-2xl"
+               :class="extrato.saldo_final >= 0 ? 'text-emerald-400' : 'text-red-400'"
+               x-text="brl(extrato.saldo_final)"></div>
+          <div x-show="extrato.saldo_final_ofx !== null" class="text-xs mt-1">
+            <span x-show="extrato.saldo_bate" class="text-emerald-500">● bate com OFX (R$ <span x-text="(extrato.saldo_final_ofx || 0).toFixed(2).replace('.', ',')"></span>)</span>
+            <span x-show="!extrato.saldo_bate" class="text-red-400">● divergente do OFX (R$ <span x-text="(extrato.saldo_final_ofx || 0).toFixed(2).replace('.', ',')"></span>)</span>
+          </div>
+        </div>
+        <div>
+          <div class="text-xs uppercase tracking-widest text-zinc-500 mb-2">Movimentações</div>
+          <div class="font-mono text-2xl text-zinc-300" x-text="extrato.n_transacoes"></div>
+          <div class="text-xs text-zinc-600 mt-1" x-show="extrato.mes" x-text="'no mês ' + extrato.mes"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabela do extrato -->
+    <div x-show="extrato.items && extrato.items.length > 0" class="border border-zinc-800 rounded-lg overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="bg-zinc-900 text-zinc-400 text-xs uppercase tracking-wider">
+          <tr>
+            <th class="text-left px-4 py-3 font-mono">Data</th>
+            <th class="text-left px-4 py-3">Descrição</th>
+            <th class="text-left px-4 py-3">Categoria</th>
+            <th class="text-right px-4 py-3">Valor</th>
+            <th class="text-right px-4 py-3">Saldo</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Linha do saldo inicial -->
+          <tr class="border-t border-zinc-900 bg-zinc-950/50">
+            <td class="px-4 py-2 font-mono text-xs text-zinc-500" x-text="(extrato.items[0] && extrato.items[0].data) || ''"></td>
+            <td class="px-4 py-2 text-zinc-500 italic text-xs" colspan="3">Saldo inicial</td>
+            <td class="px-4 py-2 text-right font-mono text-zinc-400" x-text="brl(extrato.saldo_inicial)"></td>
+          </tr>
+          <template x-for="t in extrato.items" :key="t.id">
+            <tr class="border-t border-zinc-900 hover:bg-zinc-900/40">
+              <td class="px-4 py-2 font-mono text-xs text-zinc-500" x-text="t.data"></td>
+              <td class="px-4 py-2 text-zinc-300">
+                <span x-text="t.descricao"></span>
+              </td>
+              <td class="px-4 py-2 text-xs">
+                <span x-show="t.categoria" class="text-zinc-400">
+                  <span x-text="t.categoria_icone"></span>
+                  <span x-text="t.categoria"></span>
+                </span>
+                <span x-show="!t.categoria" class="text-zinc-700">—</span>
+              </td>
+              <td class="px-4 py-2 text-right font-mono"
+                  :class="t.tipo === 'Receita' ? 'text-emerald-400' : 'text-zinc-400'">
+                <span x-text="(t.tipo === 'Receita' ? '+' : '−') + ' ' + brl(t.valor).replace('R$ ', '')"></span>
+              </td>
+              <td class="px-4 py-2 text-right font-mono"
+                  :class="t.saldo_apos >= 0 ? 'text-zinc-300' : 'text-red-400'"
+                  x-text="brl(t.saldo_apos)"></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Conta selecionada mas sem transações -->
+    <div x-show="extrato.conta_id && (!extrato.items || extrato.items.length === 0)"
+         class="text-zinc-500 text-sm py-12 text-center">
+      Sem transações pra esta conta
+      <span x-show="extrato.mes" x-text="' no mês ' + extrato.mes"></span>.
+    </div>
+  </main>
+
+  <!-- ============ INVESTIMENTOS ============ -->
+  <main x-show="view==='investimentos'" class="max-w-[1600px] mx-auto px-8 py-8">
+    <div class="flex items-baseline justify-between mb-2">
+      <h2 class="font-serif text-2xl">Carteira de investimentos</h2>
+      <button @click="abrirFormAtivo()"
+              class="text-sm text-amber-500 hover:text-amber-400 uppercase tracking-wider">
+        + Novo ativo
+      </button>
+    </div>
+
+    <!-- Status do CDI (renda fixa indexada) -->
+    <div x-show="cdiStatus" class="flex items-center gap-3 text-xs text-zinc-500 mb-6">
+      <span>CDI
+        <span class="text-zinc-300" x-text="(cdiStatus && cdiStatus.cdi_anual != null ? cdiStatus.cdi_anual.toFixed(2) : '—') + '% a.a.'"></span>
+      </span>
+      <span x-show="cdiStatus && cdiStatus.ultima_data" class="text-zinc-600">·</span>
+      <span x-show="cdiStatus && cdiStatus.ultima_data">
+        atualizado até <span x-text="cdiStatus ? formatarData(cdiStatus.ultima_data) : ''"></span>
+      </span>
+      <button @click="sincronizarCDI()" :disabled="sincronizandoCDI"
+              class="text-amber-600 hover:text-amber-400 uppercase tracking-wider disabled:opacity-50">
+        <span x-text="sincronizandoCDI ? 'sincronizando…' : 'atualizar'"></span>
+      </button>
+    </div>
+
+    <!-- Resumo da carteira -->
+    <div x-show="resumoInvest && resumoInvest.n_ativos > 0" class="grid grid-cols-3 gap-6 mb-10">
+      <div class="border-l-2 border-blue-700 pl-6">
+        <div class="text-xs uppercase tracking-widest text-zinc-500 mb-2">Total investido</div>
+        <div class="font-serif text-3xl font-medium text-blue-400" x-text="brl(resumoInvest.total_investido_brl || 0)"></div>
+      </div>
+      <div class="border-l-2 border-emerald-700 pl-6">
+        <div class="text-xs uppercase tracking-widest text-zinc-500 mb-2">Posição atual</div>
+        <div class="font-serif text-3xl font-medium text-emerald-400" x-text="brl(resumoInvest.total_atual_brl || 0)"></div>
+      </div>
+      <div class="border-l-2 pl-6"
+           :class="(resumoInvest.rentab_brl || 0) >= 0 ? 'border-amber-600' : 'border-red-700'">
+        <div class="text-xs uppercase tracking-widest text-zinc-500 mb-2">Rentabilidade</div>
+        <div class="font-serif text-3xl font-medium"
+             :class="(resumoInvest.rentab_brl || 0) >= 0 ? 'text-amber-400' : 'text-red-400'">
+          <span x-text="brl(resumoInvest.rentab_brl || 0)"></span>
+          <span class="text-base text-zinc-500" x-text="' (' + (resumoInvest.rentab_pct || 0).toFixed(2) + '%)'"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Form novo/editar ativo -->
+    <div x-show="formAtivoAberto"
+         class="border border-amber-900/50 bg-amber-950/10 rounded-lg p-5 mb-6">
+      <div class="font-serif text-lg mb-4" x-text="editandoAtivoId ? 'Editar ativo' : 'Novo ativo'"></div>
+      <div class="grid grid-cols-3 gap-3 mb-3">
+        <input type="text" placeholder="Nome (ex: VWRA — Vanguard FTSE All-World)"
+               x-model="ativoForm.nome"
+               class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded col-span-2">
+        <input type="text" placeholder="Ticker (opcional, ex: VWRA.L)"
+               x-model="ativoForm.ticker"
+               class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded font-mono">
+      </div>
+      <div class="grid grid-cols-3 gap-3 mb-3">
+        <select x-model="ativoForm.tipo" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded">
+          <template x-for="t in tiposAtivo"><option :value="t" x-text="t"></option></template>
+        </select>
+        <select x-model="ativoForm.moeda" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded">
+          <template x-for="m in moedasAtivo"><option :value="m" x-text="m"></option></template>
+        </select>
+        <input type="text" placeholder="Instituição (ex: Avenue, BB)"
+               x-model="ativoForm.instituicao"
+               class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded">
+      </div>
+      <div class="grid grid-cols-3 gap-3 mb-3">
+        <input type="text" placeholder="Detalhes da taxa (ex: 100% CDI, IPCA+5,5%)"
+               x-model="ativoForm.detalhes_taxa"
+               class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded col-span-2">
+        <input type="date" x-model="ativoForm.data_vencimento"
+               class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded"
+               title="Data de vencimento (renda fixa)">
+      </div>
+      <!-- Auto-rendimento via CDI (só renda fixa indexada) -->
+      <div class="grid grid-cols-3 gap-3 mb-3"
+           x-show="['Tesouro Direto','CDB','RDB','LCI','LCA','Fundo DI'].includes(ativoForm.tipo)">
+        <input type="number" step="0.1" min="0" placeholder="% do CDI (ex: 100)"
+               x-model="ativoForm.cdi_percentual"
+               class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded">
+        <div class="col-span-2 flex items-center text-xs text-zinc-500">
+          Preencha para o app acumular o rendimento automaticamente pela série
+          CDI do Banco Central — em vez de lançar “Rendimento” na mão. Deixe em
+          branco para controlar o saldo manualmente.
+        </div>
+      </div>
+      <div class="mb-3">
+        <input type="text" placeholder="Observações (opcional)"
+               x-model="ativoForm.observacoes"
+               class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full">
+      </div>
+      <div class="mb-4 text-sm">
+        <label class="flex items-start gap-2 cursor-pointer">
+          <input type="checkbox"
+                 :checked="rendimentoIncorporaEfetivo()"
+                 @change="ativoForm.rendimento_incorpora_saldo = $event.target.checked"
+                 class="mt-0.5 accent-amber-500">
+          <span>
+            <span class="text-zinc-300">Rendimento incorpora ao saldo</span>
+            <span class="block text-xs text-zinc-500 mt-0.5">
+              Marque para renda fixa, caixinhas/cashback ou rewards de cripto (o juro fica no ativo).
+              Desmarque para ação/FII/ETF (dividendo cai na conta corrente, não muda o saldo).
+              O padrão segue o tipo escolhido.
+            </span>
+          </span>
+        </label>
+      </div>
+      <div class="flex gap-2 justify-end">
+        <button @click="formAtivoAberto=false; editandoAtivoId=null"
+                class="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200">Cancelar</button>
+        <button @click="salvarNovoAtivo()"
+                class="bg-amber-500 hover:bg-amber-400 text-zinc-950 px-4 py-2 text-sm font-medium rounded"
+                x-text="editandoAtivoId ? 'Salvar alterações' : 'Criar ativo'">
+        </button>
+      </div>
+    </div>
+
+    <!-- Lista de ativos -->
+    <div x-show="ativos.length === 0 && !formAtivoAberto" class="text-zinc-500 text-sm py-12 text-center">
+      Nenhum ativo cadastrado ainda. Clique em <span class="text-amber-500">+ Novo ativo</span> pra começar.
+    </div>
+
+    <div class="space-y-3">
+      <template x-for="a in ativos" :key="a.id">
+        <div class="border border-zinc-800 rounded-lg overflow-hidden">
+          <!-- Cabeçalho do ativo (clicável) -->
+          <div class="px-5 py-4 hover:bg-zinc-900/40 cursor-pointer flex items-center gap-4"
+               @click="ativoExpandido = (ativoExpandido === a.id ? null : a.id); if (ativoExpandido === a.id) carregarOperacoes(a.id)">
+            <div class="flex-1 min-w-0">
+              <div class="flex items-baseline gap-3">
+                <span class="font-medium text-zinc-200" x-text="a.nome"></span>
+                <span x-show="a.ticker" class="text-xs font-mono text-zinc-500" x-text="a.ticker"></span>
+              </div>
+              <div class="text-xs text-zinc-500 mt-1 flex items-center gap-3">
+                <span class="text-blue-400" x-text="a.tipo"></span>
+                <span x-show="a.instituicao" x-text="a.instituicao"></span>
+                <span x-show="a.detalhes_taxa" x-text="a.detalhes_taxa"></span>
+                <span x-show="a.cdi_auto"
+                      class="text-emerald-500 border border-emerald-900/60 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wider"
+                      :title="'Rendimento calculado automaticamente: ' + a.cdi_percentual + '% do CDI'">
+                  auto CDI
+                </span>
+                <span x-show="a.data_vencimento" class="font-mono">
+                  vence <span x-text="a.data_vencimento"></span>
+                </span>
+              </div>
+            </div>
+            <div class="text-right whitespace-nowrap">
+              <div class="text-xs uppercase text-zinc-500">Posição</div>
+              <div class="font-mono text-zinc-200" x-text="(a.moeda !== 'BRL' ? a.moeda + ' ' : 'R$ ') + (a.saldo_atual || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})"></div>
+              <!-- Líquido estimado (IR + IOF) — só renda fixa com dedução -->
+              <div x-show="a.eh_renda_fixa && a.saldo_liquido < a.saldo_atual - 0.005"
+                   class="text-[11px] text-zinc-500 font-mono cursor-help"
+                   :title="'Líquido estimado de impostos (resgatando hoje). IR ' + (a.ir_aliquota*100).toFixed(1) + '% (R$ ' + a.ir_valor.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}) + ')' + (a.iof_valor > 0 ? ' + IOF R$ ' + a.iof_valor.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}) : '') + ' sobre o rendimento · prazo ~' + a.prazo_dias + ' dias'">
+                líq. <span x-text="(a.moeda !== 'BRL' ? a.moeda + ' ' : 'R$ ') + a.saldo_liquido.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})"></span>
+              </div>
+              <div x-show="a.eh_renda_fixa && a.isento_ir" class="text-[11px] text-emerald-600">isento de IR</div>
+            </div>
+            <div class="text-right whitespace-nowrap" x-show="a.valor_investido_moeda > 0">
+              <div class="text-xs uppercase text-zinc-500">Investido</div>
+              <div class="font-mono text-zinc-400 text-sm" x-text="(a.moeda !== 'BRL' ? a.moeda + ' ' : 'R$ ') + a.valor_investido_moeda.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})"></div>
+            </div>
+            <div class="text-right whitespace-nowrap" x-show="a.valor_investido_moeda > 0">
+              <div class="text-xs uppercase text-zinc-500">Rentab.</div>
+              <div class="font-mono text-sm" :class="a.rentab_moeda >= 0 ? 'text-emerald-400' : 'text-red-400'"
+                   x-text="(a.rentab_moeda >= 0 ? '+' : '') + a.rentab_pct.toFixed(2) + '%'"></div>
+            </div>
+            <span class="text-zinc-600 text-xs ml-3"
+                  x-text="ativoExpandido === a.id ? '▲' : '▼'"></span>
+          </div>
+
+          <!-- Painel expandido: operações + ações -->
+          <div x-show="ativoExpandido === a.id" x-transition class="border-t border-zinc-900 bg-zinc-950/30">
+            <!-- Atalhos -->
+            <div class="px-5 py-3 border-b border-zinc-900 flex items-center gap-2 flex-wrap">
+              <button @click.stop="abrirFormOperacao(a, 'Compra')"
+                      class="text-xs bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 rounded">+ Compra/Aplicação</button>
+              <button @click.stop="abrirFormOperacao(a, 'Aporte')"
+                      class="text-xs bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 rounded">+ Aporte</button>
+              <button @click.stop="abrirFormOperacao(a, 'Rendimento')"
+                      class="text-xs bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 rounded">+ Rendimento</button>
+              <button @click.stop="abrirFormOperacao(a, 'Resgate')"
+                      class="text-xs bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 rounded">- Resgate</button>
+              <button @click.stop="abrirFormOperacao(a, 'Venda')"
+                      class="text-xs bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 rounded">- Venda</button>
+
+              <!-- Atualizar saldo manual -->
+              <div class="flex-1"></div>
+              <span class="text-xs text-zinc-500">Saldo atual:</span>
+              <input type="number" step="0.01" :value="a.saldo_atual || 0"
+                     @blur.stop="atualizarSaldoAtivo(a.id, $event.target.value)"
+                     @click.stop=""
+                     @keyup.enter="$event.target.blur()"
+                     class="bg-zinc-900 border border-zinc-800 px-2 py-1 text-sm rounded font-mono w-32 text-right">
+              <span class="text-xs text-zinc-500" x-text="a.moeda"></span>
+              <span x-show="a.saldo_atualizado_em" class="text-xs text-zinc-600" x-text="'(em ' + a.saldo_atualizado_em + ')'"></span>
+
+              <button @click.stop="abrirFormEditarAtivo(a)"
+                      class="text-xs text-zinc-600 hover:text-amber-400 ml-2">Editar</button>
+              <button @click.stop="excluirAtivo(a.id, a.nome)"
+                      class="text-xs text-zinc-600 hover:text-red-400 ml-2">Excluir</button>
+            </div>
+
+            <!-- Form de operação -->
+            <div x-show="formOpAtivoId === a.id" x-transition class="px-5 py-4 border-b border-zinc-900 bg-zinc-900/30">
+              <div class="text-sm font-medium mb-3" x-text="'Nova operação: ' + opForm.tipo"></div>
+              <div class="grid grid-cols-4 gap-3 mb-3">
+                <div>
+                  <label class="block text-xs text-zinc-500 mb-1">Data</label>
+                  <input type="date" x-model="opForm.data"
+                         class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full">
+                </div>
+                <div>
+                  <label class="block text-xs text-zinc-500 mb-1">Quantidade <span class="text-zinc-700">(opcional)</span></label>
+                  <input type="number" step="0.0001" x-model="opForm.quantidade" placeholder="ex: 10.5"
+                         class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full font-mono">
+                </div>
+                <div>
+                  <label class="block text-xs text-zinc-500 mb-1">Preço unitário <span class="text-zinc-700" x-text="'(' + (opForm.moeda_operacao || a.moeda) + ')'"></span></label>
+                  <input type="number" step="0.0001" x-model="opForm.preco_unitario" placeholder="ex: 145.20"
+                         class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full font-mono">
+                </div>
+                <div>
+                  <label class="block text-xs text-zinc-500 mb-1">Valor total <span class="text-zinc-700" x-text="'(' + (opForm.moeda_operacao || a.moeda) + ')'"></span></label>
+                  <input type="number" step="0.01" x-model="opForm.valor_total" placeholder="auto se qtd × preço"
+                         class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full font-mono">
+                </div>
+              </div>
+              <div class="grid grid-cols-4 gap-3 mb-3">
+                <div>
+                  <label class="block text-xs text-zinc-500 mb-1">Moeda da operação</label>
+                  <select x-model="opForm.moeda_operacao"
+                          class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full">
+                    <template x-for="m in moedasAtivo"><option :value="m" x-text="m"></option></template>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-xs text-zinc-500 mb-1">
+                    Câmbio em BRL <span class="text-zinc-700">(se moeda ≠ BRL)</span>
+                  </label>
+                  <input type="number" step="0.0001" x-model="opForm.cotacao_cambio" placeholder="ex: 6.20"
+                         class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full font-mono"
+                         :disabled="opForm.moeda_operacao === 'BRL'">
+                </div>
+                <div>
+                  <label class="block text-xs text-zinc-500 mb-1">Taxas <span class="text-zinc-700">(opcional)</span></label>
+                  <input type="number" step="0.01" x-model="opForm.taxas" placeholder="0"
+                         class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full font-mono">
+                </div>
+                <div>
+                  <label class="block text-xs text-zinc-500 mb-1">Observação</label>
+                  <input type="text" x-model="opForm.observacoes" placeholder="opcional"
+                         class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full">
+                </div>
+              </div>
+              <div class="flex justify-end gap-2">
+                <button @click.stop="formOpAtivoId=null"
+                        class="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200">Cancelar</button>
+                <button @click.stop="salvarNovaOperacao()"
+                        class="bg-amber-500 hover:bg-amber-400 text-zinc-950 px-4 py-2 text-sm font-medium rounded">
+                  Salvar
+                </button>
+              </div>
+            </div>
+
+            <!-- Tabela de operações -->
+            <div x-show="formOpAtivoId !== a.id">
+              <div x-show="(operacoesPorAtivo[a.id] || []).length === 0" class="px-5 py-6 text-zinc-500 text-sm text-center">
+                Nenhuma operação registrada. Use os botões acima pra adicionar.
+              </div>
+              <table x-show="(operacoesPorAtivo[a.id] || []).length > 0" class="w-full text-sm">
+                <thead class="bg-zinc-900/40 text-zinc-400 text-xs uppercase tracking-wider">
+                  <tr>
+                    <th class="text-left px-5 py-2.5">Data</th>
+                    <th class="text-left px-5 py-2.5">Tipo</th>
+                    <th class="text-right px-5 py-2.5">Qtd</th>
+                    <th class="text-right px-5 py-2.5">Preço unit.</th>
+                    <th class="text-right px-5 py-2.5">Valor (moeda op.)</th>
+                    <th class="text-right px-5 py-2.5">Câmbio</th>
+                    <th class="text-right px-5 py-2.5">Valor BRL</th>
+                    <th class="px-5 py-2.5"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="op in operacoesPorAtivo[a.id] || []" :key="op.id">
+                    <tr class="border-t border-zinc-900">
+                      <td class="px-5 py-2 font-mono text-xs text-zinc-400" x-text="op.data"></td>
+                      <td class="px-5 py-2">
+                        <span :class="['Compra','Aporte'].includes(op.tipo) ? 'text-emerald-400' :
+                                       op.tipo === 'Rendimento' ? 'text-amber-400' : 'text-red-400'"
+                              x-text="op.tipo"></span>
+                      </td>
+                      <td class="px-5 py-2 text-right font-mono text-xs"
+                          x-text="op.quantidade ? op.quantidade.toLocaleString('pt-BR', {minimumFractionDigits: 4, maximumFractionDigits: 8}) : '—'"></td>
+                      <td class="px-5 py-2 text-right font-mono text-xs"
+                          x-text="op.preco_unitario ? op.preco_unitario.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 4}) : '—'"></td>
+                      <td class="px-5 py-2 text-right font-mono text-xs">
+                        <span x-text="op.moeda_operacao + ' ' + op.valor_total.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})"></span>
+                      </td>
+                      <td class="px-5 py-2 text-right font-mono text-xs text-zinc-500"
+                          x-text="op.cotacao_cambio ? op.cotacao_cambio.toFixed(4) : '—'"></td>
+                      <td class="px-5 py-2 text-right font-mono text-xs text-zinc-300"
+                          x-text="brl(op.valor_total_brl)"></td>
+                      <td class="px-5 py-2 text-right">
+                        <button @click.stop="excluirOperacao(op.id, a.id)"
+                                class="text-xs text-zinc-600 hover:text-red-400">×</button>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </template>
+    </div>
+  </main>
+
+  <!-- ============ METAS DE PATRIMÔNIO ============ -->
+  <main x-show="view==='metas'" class="max-w-[1600px] mx-auto px-8 py-8">
+    <div class="flex items-baseline justify-between mb-6">
+      <h2 class="font-serif text-2xl">Metas de patrimônio</h2>
+      <button @click="abrirMetaNova()"
+              class="bg-amber-500 hover:bg-amber-400 text-zinc-950 px-4 py-1.5 text-sm font-medium rounded transition">
+        + Nova meta
+      </button>
+    </div>
+
+    <!-- Empty state -->
+    <div x-show="metas.length === 0" class="bg-zinc-900/40 border border-zinc-800 rounded-lg p-12 text-center">
+      <div class="text-zinc-500 text-sm mb-4">Você ainda não criou nenhuma meta.</div>
+      <div class="text-xs text-zinc-600 max-w-md mx-auto leading-relaxed">
+        Crie metas vinculadas ao patrimônio total, a uma classe de ativos (ex: renda variável)
+        ou livres (ex: entrada do apê). Use sub-metas para criar níveis dentro de uma meta maior.
+      </div>
+    </div>
+
+    <!-- Lista de metas (achatada com indentação por nível) -->
+    <div class="space-y-3">
+      <template x-for="m in metasComNivel" :key="m.id">
+        <div :style="`margin-left: ${m.nivel * 24}px`"
+             class="bg-zinc-900/40 border border-zinc-800 rounded-lg p-4 hover:border-zinc-700 transition"
+             :class="m.percentual >= 100 ? 'border-emerald-800/60' : ''">
+
+          <div class="flex items-start justify-between gap-4 mb-2">
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2">
+                <span x-show="m.nivel > 0" class="text-zinc-600 text-xs">↳</span>
+                <h3 class="font-medium text-zinc-100 truncate" x-text="m.nome"></h3>
+                <span x-show="m.percentual >= 100" class="text-emerald-400 text-xs uppercase tracking-wider">✓ atingida</span>
+              </div>
+              <div class="text-xs text-zinc-500 mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span x-show="m.escopo==='patrimonio_total'">Patrimônio total</span>
+                <span x-show="m.escopo==='tipos_ativo'" x-text="(m.escopo_tipos || []).join(', ')"></span>
+                <span x-show="m.escopo==='ativos'" x-text="(m.escopo_ativos || []).map(id => nomeAtivo(id)).join(', ')"></span>
+                <span x-show="m.escopo==='manual'" class="text-zinc-600">Manual</span>
+                <span x-show="m.data_alvo" class="text-zinc-600">·</span>
+                <span x-show="m.data_alvo">Prazo: <span x-text="formatarData(m.data_alvo)"></span></span>
+              </div>
+            </div>
+            <button @click="abrirMetaEdit(m)"
+                    class="text-xs text-zinc-500 hover:text-amber-400 uppercase tracking-wider">
+              Editar
+            </button>
+          </div>
+
+          <!-- Barra de progresso -->
+          <div class="mb-3">
+            <div class="flex items-baseline justify-between mb-1 text-xs">
+              <span class="text-zinc-400">
+                <span class="font-mono text-zinc-200" x-text="formatarBRL(m.valor_atual)"></span>
+                <span x-show="m.valor_atual_bruto > m.valor_atual + 0.005"
+                      class="text-[10px] text-zinc-600 cursor-help"
+                      :title="'Valor líquido de IR/IOF (estimado). Bruto: ' + formatarBRL(m.valor_atual_bruto)">líq.</span>
+                <span class="text-zinc-600 mx-1">/</span>
+                <span class="font-mono text-zinc-500" x-text="formatarBRL(m.valor_alvo)"></span>
+              </span>
+              <span class="font-mono"
+                    :class="m.percentual >= 100 ? 'text-emerald-400' : 'text-amber-400'"
+                    x-text="m.percentual.toFixed(1) + '%'"></span>
+            </div>
+            <div class="h-2 bg-zinc-950 rounded-full overflow-hidden border border-zinc-800/60">
+              <div class="h-full transition-all"
+                   :class="m.percentual >= 100 ? 'bg-emerald-500' : 'bg-amber-500'"
+                   :style="`width: ${Math.min(m.percentual, 100)}%`"></div>
+            </div>
+          </div>
+
+          <!-- Métricas de prazo / ritmo / projeção -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs"
+               x-show="m.percentual < 100">
+            <div x-show="m.aporte_mensal_necessario !== null"
+                 class="bg-zinc-950/60 border border-zinc-800/60 rounded px-3 py-2">
+              <div class="text-zinc-500 uppercase tracking-wider text-[10px] mb-0.5">Pra bater no prazo</div>
+              <div class="font-mono text-zinc-200" x-text="formatarBRL(m.aporte_mensal_necessario) + '/mês'"></div>
+              <div class="text-zinc-600 text-[10px] mt-0.5"
+                   x-show="m.meses_restantes !== null"
+                   x-text="m.meses_restantes.toFixed(1) + ' meses restantes'"></div>
+            </div>
+
+            <div x-show="m.ritmo_mensal_estimado > 0"
+                 class="bg-zinc-950/60 border border-zinc-800/60 rounded px-3 py-2">
+              <div class="text-zinc-500 uppercase tracking-wider text-[10px] mb-0.5">Ritmo atual (90d)</div>
+              <div class="font-mono text-zinc-200" x-text="formatarBRL(m.ritmo_mensal_estimado) + '/mês'"></div>
+            </div>
+
+            <div x-show="m.projecao_data_atingimento && m.projecao_data_atingimento !== 'atingida'"
+                 class="bg-zinc-950/60 border border-zinc-800/60 rounded px-3 py-2">
+              <div class="text-zinc-500 uppercase tracking-wider text-[10px] mb-0.5">Projeção no ritmo</div>
+              <div class="font-mono text-zinc-200" x-text="formatarData(m.projecao_data_atingimento)"></div>
+              <div class="text-zinc-600 text-[10px] mt-0.5">
+                <span x-show="m.meses_projetados !== null" x-text="'em ' + (m.meses_projetados !== null ? m.meses_projetados.toFixed(1) : '') + ' meses'"></span>
+                <span x-show="m.taxa_retorno_anual > 0"
+                      x-text="' · rende ' + m.taxa_retorno_anual.toFixed(1) + '% a.a. líq.'"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Atualização rápida do valor manual -->
+          <div x-show="m.escopo==='manual' && m.percentual < 100" class="mt-3 flex items-center gap-2">
+            <input type="number" step="0.01"
+                   :value="m.valor_atual_manual"
+                   @keydown.enter="atualizarManual(m.id, $event.target.value)"
+                   placeholder="Novo valor atual"
+                   class="flex-1 bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-xs focus:border-amber-700 focus:outline-none">
+            <button @click="atualizarManual(m.id, $event.target.previousElementSibling.value)"
+                    class="text-xs text-amber-400 hover:text-amber-300 uppercase tracking-wider">
+              Atualizar
+            </button>
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <!-- Modal: criar/editar meta -->
+    <div x-show="metaModal.aberto" x-cloak
+         class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4"
+         @click.self="metaModal.aberto=false">
+      <div class="bg-zinc-900 border border-zinc-800 rounded-lg max-w-xl w-full max-h-[90vh] overflow-y-auto">
+        <div class="border-b border-zinc-800 px-6 py-4">
+          <h3 class="font-serif text-lg" x-text="metaModal.editando_id ? 'Editar meta' : 'Nova meta'"></h3>
+        </div>
+        <div class="p-6 space-y-4 text-sm">
+
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Nome</label>
+            <input type="text" x-model="metaModal.nome"
+                   placeholder="Ex: Patrimônio R$ 500k em 2030"
+                   class="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 focus:border-amber-700 focus:outline-none">
+          </div>
+
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Descrição (opcional)</label>
+            <input type="text" x-model="metaModal.descricao"
+                   class="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 focus:border-amber-700 focus:outline-none">
+          </div>
+
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">O que conta como progresso</label>
+            <div class="grid grid-cols-2 gap-2">
+              <button @click="metaModal.escopo='patrimonio_total'"
+                      :class="metaModal.escopo==='patrimonio_total' ? 'bg-amber-500/20 border-amber-700 text-amber-300' : 'bg-zinc-950 border-zinc-800 text-zinc-400'"
+                      class="border rounded px-3 py-2 text-xs transition">
+                Patrimônio total
+              </button>
+              <button @click="metaModal.escopo='tipos_ativo'"
+                      :class="metaModal.escopo==='tipos_ativo' ? 'bg-amber-500/20 border-amber-700 text-amber-300' : 'bg-zinc-950 border-zinc-800 text-zinc-400'"
+                      class="border rounded px-3 py-2 text-xs transition">
+                Classes de ativo
+              </button>
+              <button @click="metaModal.escopo='ativos'"
+                      :class="metaModal.escopo==='ativos' ? 'bg-amber-500/20 border-amber-700 text-amber-300' : 'bg-zinc-950 border-zinc-800 text-zinc-400'"
+                      class="border rounded px-3 py-2 text-xs transition">
+                Ativos específicos
+              </button>
+              <button @click="metaModal.escopo='manual'"
+                      :class="metaModal.escopo==='manual' ? 'bg-amber-500/20 border-amber-700 text-amber-300' : 'bg-zinc-950 border-zinc-800 text-zinc-400'"
+                      class="border rounded px-3 py-2 text-xs transition">
+                Manual
+              </button>
+            </div>
+            <div class="text-xs text-zinc-500 mt-2">
+              <span x-show="metaModal.escopo==='patrimonio_total'">Soma de todos os ativos da carteira em BRL.</span>
+              <span x-show="metaModal.escopo==='tipos_ativo'">Soma só dos ativos das classes selecionadas abaixo.</span>
+              <span x-show="metaModal.escopo==='ativos'">Soma só dos ativos específicos selecionados abaixo (ex: um CDB que é sua reserva).</span>
+              <span x-show="metaModal.escopo==='manual'">Você atualiza o valor atual à mão (pra objetivos não vinculados à carteira).</span>
+            </div>
+          </div>
+
+          <div x-show="metaModal.escopo==='tipos_ativo'">
+            <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Classes de ativo incluídas</label>
+            <div class="flex flex-wrap gap-1.5">
+              <template x-for="t in tiposAtivoDisp" :key="t">
+                <button @click="toggleTipoMeta(t)"
+                        :class="metaModal.escopo_tipos.includes(t) ? 'bg-amber-500/20 border-amber-700 text-amber-300' : 'bg-zinc-950 border-zinc-800 text-zinc-400'"
+                        class="border rounded px-2.5 py-1 text-xs transition">
+                  <span x-text="t"></span>
+                </button>
+              </template>
+            </div>
+          </div>
+
+          <div x-show="metaModal.escopo==='ativos'">
+            <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Ativos incluídos</label>
+            <div x-show="ativosDisp.length === 0" class="text-xs text-zinc-500">
+              Nenhum ativo cadastrado. Cadastre ativos na aba Investimentos primeiro.
+            </div>
+            <div class="flex flex-wrap gap-1.5">
+              <template x-for="a in ativosDisp" :key="a.id">
+                <button @click="toggleAtivoMeta(a.id)"
+                        :class="metaModal.escopo_ativos.includes(a.id) ? 'bg-amber-500/20 border-amber-700 text-amber-300' : 'bg-zinc-950 border-zinc-800 text-zinc-400'"
+                        class="border rounded px-2.5 py-1 text-xs transition">
+                  <span x-text="a.nome"></span>
+                  <span class="text-zinc-500" x-text="'· ' + a.tipo"></span>
+                </button>
+              </template>
+            </div>
+          </div>
+
+          <div x-show="metaModal.escopo==='manual'">
+            <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Valor atual</label>
+            <input type="number" step="0.01" x-model.number="metaModal.valor_atual_manual"
+                   class="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 focus:border-amber-700 focus:outline-none">
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Valor alvo (R$)</label>
+              <input type="number" step="0.01" x-model.number="metaModal.valor_alvo"
+                     class="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 focus:border-amber-700 focus:outline-none">
+            </div>
+            <div>
+              <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Data alvo (opcional)</label>
+              <input type="date" x-model="metaModal.data_alvo"
+                     class="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 focus:border-amber-700 focus:outline-none">
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Taxa de retorno esperada (% a.a., opcional)</label>
+            <input type="number" step="0.1" min="0" x-model.number="metaModal.taxa_retorno_anual"
+                   placeholder="ex: 14 — em branco usa o CDI dos ativos"
+                   class="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 focus:border-amber-700 focus:outline-none">
+            <div class="text-xs text-zinc-500 mt-1">
+              Usada na projeção composta (o capital atual rende ao longo do tempo).
+              Deixe em branco para metas de renda fixa — o app deriva do CDI automaticamente.
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Meta-mãe (opcional)</label>
+            <select x-model="metaModal.meta_pai_id"
+                    class="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 focus:border-amber-700 focus:outline-none">
+              <option value="">— Sem meta-mãe (raiz)</option>
+              <template x-for="m in metasFlat" :key="m.id">
+                <option :value="m.id" :disabled="m.id === metaModal.editando_id" x-text="m.nome"></option>
+              </template>
+            </select>
+            <div class="text-xs text-zinc-500 mt-1">Se escolher uma meta-mãe, esta meta vira sub-meta dela (nível abaixo).</div>
+          </div>
+
+        </div>
+        <div class="border-t border-zinc-800 px-6 py-4 flex items-center justify-between">
+          <button x-show="metaModal.editando_id"
+                  @click="deletarMeta(metaModal.editando_id)"
+                  class="text-xs text-red-400 hover:text-red-300 uppercase tracking-wider">
+            Excluir
+          </button>
+          <div class="flex gap-2 ml-auto">
+            <button @click="metaModal.aberto=false"
+                    class="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-4 py-1.5 text-xs uppercase tracking-wider rounded transition">
+              Cancelar
+            </button>
+            <button @click="salvarMeta()"
+                    class="bg-amber-500 hover:bg-amber-400 text-zinc-950 px-4 py-1.5 text-xs uppercase tracking-wider font-medium rounded transition">
+              Salvar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ============ CONFIGURAÇÕES (Contas / Categorias / Atribuições) ============ -->
+  <main x-show="view==='config'" class="max-w-[1600px] mx-auto px-8 py-8">
+    <div class="flex items-baseline justify-between mb-6">
+      <h2 class="font-serif text-2xl">Configurações</h2>
+      <nav class="flex gap-1 text-sm">
+        <button @click="subView='perfil'; carregarConfig()"
+                :class="subView==='perfil' ? 'text-amber-500 border-b border-amber-500' : 'text-zinc-500 hover:text-zinc-200'"
+                class="px-3 py-1 transition">Perfil</button>
+        <button @click="subView='contas'; carregarContas(); carregarBancos()"
+                :class="subView==='contas' ? 'text-amber-500 border-b border-amber-500' : 'text-zinc-500 hover:text-zinc-200'"
+                class="px-3 py-1 transition">Contas</button>
+        <button @click="subView='bancos'; carregarBancos()"
+                :class="subView==='bancos' ? 'text-amber-500 border-b border-amber-500' : 'text-zinc-500 hover:text-zinc-200'"
+                class="px-3 py-1 transition">Bancos</button>
+        <button @click="subView='categorias'; carregarCategoriasDetalhe()"
+                :class="subView==='categorias' ? 'text-amber-500 border-b border-amber-500' : 'text-zinc-500 hover:text-zinc-200'"
+                class="px-3 py-1 transition">Categorias</button>
+        <button @click="subView='atribuicoes'; carregarAtribuicoesDetalhe()"
+                :class="subView==='atribuicoes' ? 'text-amber-500 border-b border-amber-500' : 'text-zinc-500 hover:text-zinc-200'"
+                class="px-3 py-1 transition">Atribuições</button>
+        <button @click="subView='regras'; carregarRegras()"
+                :class="subView==='regras' ? 'text-amber-500 border-b border-amber-500' : 'text-zinc-500 hover:text-zinc-200'"
+                class="px-3 py-1 transition">Regras</button>
+        <button @click="subView='arquivos'; carregarFaturas()"
+                :class="subView==='arquivos' ? 'text-amber-500 border-b border-amber-500' : 'text-zinc-500 hover:text-zinc-200'"
+                class="px-3 py-1 transition">Arquivos</button>
+      </nav>
+    </div>
+
+    <!-- ====== Perfil ====== -->
+    <div x-show="subView==='perfil'" class="max-w-2xl">
+      <p class="text-sm text-zinc-500 mb-6">
+        Cadastre seu nome e os nomes de pessoas que compartilham finanças com você
+        (cônjuge, filhos, pais). Movimentações Pix entre vocês serão tratadas como
+        <em>"Transferência entre Contas"</em> e não contadas como receita/despesa.
+      </p>
+
+      <!-- Seu nome -->
+      <div class="border border-zinc-800 rounded-lg p-5 mb-4">
+        <label class="block text-xs uppercase tracking-wider text-zinc-400 mb-2">
+          Seu nome completo
+        </label>
+        <div class="flex gap-2">
+          <input type="text" x-model="config.nome_usuario"
+                 placeholder="ex: Micael Italo da Silva Salvador"
+                 class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded flex-1">
+          <button @click="salvarConfig('nome_usuario', config.nome_usuario)"
+                  class="bg-amber-500 hover:bg-amber-400 text-zinc-950 px-4 py-2 text-sm rounded">
+            Salvar
+          </button>
+        </div>
+      </div>
+
+      <!-- Família -->
+      <div class="border border-zinc-800 rounded-lg p-5">
+        <label class="block text-xs uppercase tracking-wider text-zinc-400 mb-2">
+          Família (finanças compartilhadas)
+        </label>
+        <p class="text-xs text-zinc-600 mb-3">
+          Um nome por linha. Pix entre vocês será tratado como transferência interna.
+        </p>
+        <textarea x-model="config.familia_nomes_textarea"
+                  placeholder="Andreina Salvador Passos&#10;Maria Silva (filha)"
+                  rows="4"
+                  class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full font-mono mb-3"></textarea>
+        <button @click="salvarFamilia()"
+                class="bg-amber-500 hover:bg-amber-400 text-zinc-950 px-4 py-2 text-sm rounded">
+          Salvar
+        </button>
+        <p class="text-xs text-zinc-600 mt-2">
+          O sistema reconhece a partir de 2 partes do nome em comum (ex: "Andreina Salvador" basta).
+          Use o nome completo que aparece nas transferências bancárias.
+        </p>
+      </div>
+
+      <!-- Atualizações -->
+      <div class="border border-zinc-800 rounded-lg p-5">
+        <label class="block text-xs uppercase tracking-wider text-zinc-400 mb-2">
+          Atualizações do app
+        </label>
+        <p class="text-xs text-zinc-600 mb-1">
+          Versão atual:
+          <strong class="text-zinc-300" x-text="appUpdate.versao_atual || '—'"></strong>
+          <span x-show="appUpdate.tem_atualizacao" class="text-amber-400">
+            • nova: <strong x-text="appUpdate.versao_disponivel"></strong>
+          </span>
+          <span x-show="!appUpdate.tem_atualizacao && !appUpdate.erro" class="text-emerald-500">• em dia</span>
+        </p>
+        <p class="text-xs text-zinc-600 mb-3">
+          Repositório do GitHub onde as versões são publicadas (formato
+          <code class="text-zinc-400">usuario/repo</code>). As releases devem conter
+          o <code class="text-zinc-400">NexumSetup.exe</code> como anexo.
+        </p>
+        <div class="flex gap-2 mb-2">
+          <input x-model="config.atualizacao_repo" placeholder="usuario/nexum"
+                 class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded flex-1 font-mono">
+          <button @click="salvarRepoUpdate()"
+                  class="bg-amber-500 hover:bg-amber-400 text-zinc-950 px-4 py-2 text-sm rounded whitespace-nowrap">
+            Salvar e verificar
+          </button>
+        </div>
+        <button x-show="appUpdate.tem_atualizacao && appUpdate.instalado"
+                @click="instalarAtualizacao()" :disabled="instalandoUpdate"
+                class="text-sm text-amber-500 hover:text-amber-400 disabled:opacity-50">
+          <span x-show="!instalandoUpdate">⬆️ Instalar a versão nova agora</span>
+          <span x-show="instalandoUpdate">Atualizando…</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- ====== Contas ====== -->
+    <div x-show="subView==='contas'">
+      <p class="text-sm text-zinc-500 mb-4">
+        Cadastre contas/bancos e suas senhas de PDF (CPF, data de nasc., etc.). Senhas ficam só localmente.
+      </p>
+
+      <button x-show="!formContaAberto" @click="abrirFormConta()"
+              class="text-sm text-amber-500 hover:text-amber-400 uppercase tracking-wider mb-4">
+        + Nova conta / banco
+      </button>
+
+      <!-- Form criar nova conta -->
+      <div x-show="formContaAberto"
+           class="border border-amber-900/50 bg-amber-950/10 rounded-lg p-4 mb-4">
+        <div class="grid grid-cols-3 gap-3 mb-3">
+          <input type="text" placeholder="Nome (ex: Itaú Crédito)" x-model="contaForm.nome"
+                 class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded">
+          <select x-model="contaForm.tipo" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded">
+            <option value="Cartão de Crédito">Cartão de Crédito</option>
+            <option value="Conta Corrente">Conta Corrente</option>
+            <option value="Conta Poupança">Conta Poupança</option>
+            <option value="Carteira">Carteira (dinheiro)</option>
+            <option value="Investimento">Investimento</option>
+          </select>
+          <select x-model="contaForm.banco_id" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded">
+            <option value="">— Banco —</option>
+            <template x-for="b in bancos"><option :value="b.id" x-text="b.nome"></option></template>
+          </select>
+        </div>
+        <div class="grid grid-cols-3 gap-3 mb-3">
+          <input type="text" placeholder="Final do cartão (4 dígitos)" x-model="contaForm.final"
+                 class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded">
+          <input type="number" min="1" max="31" placeholder="Dia fechamento (cartão)" x-model="contaForm.dia_fechamento"
+                 class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded">
+          <input type="number" min="1" max="31" placeholder="Dia vencimento (cartão)" x-model="contaForm.dia_vencimento"
+                 class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded">
+        </div>
+        <input type="text" placeholder="Titular (opcional, deixe vazio se for sua)" x-model="contaForm.titular"
+               class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full mb-3">
+        <input type="text" placeholder="Observações (opcional)" x-model="contaForm.observacoes"
+               class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full mb-3">
+        <div class="flex gap-2">
+          <button @click="salvarNovaConta()" class="bg-amber-500 text-zinc-950 px-4 py-2 text-sm rounded hover:bg-amber-400">Salvar</button>
+          <button @click="formContaAberto=false" class="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200">Cancelar</button>
+        </div>
+      </div>
+
+      <div class="border border-zinc-800 rounded-lg overflow-hidden">
+        <table class="w-full text-sm">
+          <thead class="bg-zinc-900 text-zinc-400 text-xs uppercase tracking-wider">
+            <tr>
+              <th class="text-left px-4 py-3">Nome</th>
+              <th class="text-left px-4 py-3">Tipo</th>
+              <th class="text-left px-4 py-3">Banco</th>
+              <th class="text-left px-4 py-3">Titular</th>
+              <th class="text-left px-4 py-3">Final</th>
+              <th class="text-left px-4 py-3">Senha PDF</th>
+              <th class="px-4 py-3"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="c in contasDetalhe" :key="c.id">
+              <tr class="border-t border-zinc-900 hover:bg-zinc-900/40">
+                <td class="px-4 py-2.5">
+                  <input type="text" :value="c.nome" @blur="renomearConta(c.id, 'nome', $event.target.value)"
+                         @keyup.enter="$event.target.blur()"
+                         class="bg-transparent border-0 hover:bg-zinc-800 focus:bg-zinc-800 px-1 py-0.5 rounded font-medium w-full">
+                </td>
+                <td class="px-4 py-2.5 text-zinc-400 text-xs" x-text="c.tipo"></td>
+                <td class="px-4 py-2.5">
+                  <select :value="c.banco_id || ''" @change="renomearConta(c.id, 'banco_id', $event.target.value || null)"
+                          class="bg-transparent border-0 hover:bg-zinc-800 px-1 py-0.5 rounded text-xs cursor-pointer w-full text-zinc-400">
+                    <option value="">— Banco —</option>
+                    <template x-for="b in bancos">
+                      <option :value="b.id" x-text="b.nome"></option>
+                    </template>
+                  </select>
+                </td>
+                <td class="px-4 py-2.5">
+                  <input type="text" :value="c.titular || ''" placeholder="Você"
+                         @blur="renomearConta(c.id, 'titular', $event.target.value)"
+                         @keyup.enter="$event.target.blur()"
+                         class="bg-transparent border-0 hover:bg-zinc-800 focus:bg-zinc-800 px-1 py-0.5 rounded text-xs w-full text-zinc-400 placeholder:text-zinc-600">
+                </td>
+                <td class="px-4 py-2.5 text-zinc-500 text-xs font-mono" x-text="c.final || '—'"></td>
+                <td class="px-4 py-2.5">
+                  <template x-if="contaEditando !== c.id">
+                    <div class="flex items-center gap-2">
+                      <span x-show="c.tem_senha" class="text-xs text-emerald-500">●●●● cadastrada</span>
+                      <span x-show="!c.tem_senha" class="text-xs text-zinc-600 italic">não cadastrada</span>
+                      <button @click="iniciarEdicaoSenha(c)" class="text-xs text-amber-500 hover:text-amber-400 ml-2">
+                        <span x-text="c.tem_senha ? 'alterar' : 'adicionar'"></span>
+                      </button>
+                      <button x-show="c.tem_senha" @click="removerSenha(c.id)"
+                              class="text-xs text-zinc-600 hover:text-red-400 ml-1">remover</button>
+                    </div>
+                  </template>
+                  <template x-if="contaEditando === c.id">
+                    <div class="flex items-center gap-2">
+                      <input :type="senhaVisivel ? 'text' : 'password'" x-model="senhaForm" placeholder="senha do PDF"
+                             @keyup.enter="salvarSenhaConta(c.id)"
+                             class="bg-zinc-900 border border-amber-700 px-2 py-1 text-xs rounded font-mono w-44">
+                      <button @click="senhaVisivel = !senhaVisivel" class="text-xs text-zinc-500 hover:text-zinc-300"
+                              x-text="senhaVisivel ? 'ocultar' : 'mostrar'"></button>
+                      <button @click="salvarSenhaConta(c.id)" class="text-xs text-amber-500 hover:text-amber-400">salvar</button>
+                      <button @click="contaEditando = null" class="text-xs text-zinc-500">cancelar</button>
+                    </div>
+                  </template>
+                </td>
+                <td class="px-4 py-2.5 text-right">
+                  <button @click="excluirConta(c.id, c.nome)" class="text-xs text-zinc-600 hover:text-red-400">Excluir</button>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ====== Bancos ====== -->
+    <div x-show="subView==='bancos'">
+      <p class="text-sm text-zinc-500 mb-4">
+        Bancos / instituições. Cada conta pertence a um banco — e o dashboard agrupa transações pelo banco.
+      </p>
+
+      <button x-show="!formBancoAberto" @click="abrirFormBanco()"
+              class="text-sm text-amber-500 hover:text-amber-400 uppercase tracking-wider mb-4">
+        + Novo banco
+      </button>
+
+      <div x-show="formBancoAberto"
+           class="border border-amber-900/50 bg-amber-950/10 rounded-lg p-4 mb-4 grid grid-cols-5 gap-3">
+        <input type="text" placeholder="Nome (ex: Itaú)" x-model="bancoForm.nome"
+               class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded col-span-3">
+        <input type="color" x-model="bancoForm.cor"
+               class="bg-zinc-900 border border-zinc-800 rounded h-9 cursor-pointer" title="Cor para gráficos">
+        <div class="flex gap-2">
+          <button @click="salvarNovoBanco()" class="bg-amber-500 text-zinc-950 px-4 py-2 text-sm rounded hover:bg-amber-400 flex-1">Salvar</button>
+          <button @click="formBancoAberto=false" class="px-3 py-2 text-sm text-zinc-400 hover:text-zinc-200">×</button>
+        </div>
+      </div>
+
+      <div class="border border-zinc-800 rounded-lg overflow-hidden">
+        <table class="w-full text-sm">
+          <thead class="bg-zinc-900 text-zinc-400 text-xs uppercase tracking-wider">
+            <tr>
+              <th class="text-left px-4 py-3 w-12"></th>
+              <th class="text-left px-4 py-3">Nome</th>
+              <th class="text-right px-4 py-3">Contas</th>
+              <th class="px-4 py-3"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="b in bancos" :key="b.id">
+              <tr class="border-t border-zinc-900 hover:bg-zinc-900/40">
+                <td class="px-4 py-2.5 text-center">
+                  <span class="inline-block w-3 h-3 rounded-full" :style="`background-color: ${b.cor}`"></span>
+                </td>
+                <td class="px-4 py-2.5 font-medium">
+                  <input type="text" :value="b.nome" @blur="renomearBanco(b.id, $event.target.value)"
+                         @keyup.enter="$event.target.blur()"
+                         class="bg-transparent border-0 hover:bg-zinc-800 focus:bg-zinc-800 px-1 py-0.5 rounded font-medium w-full">
+                </td>
+                <td class="px-4 py-2.5 text-right text-xs text-zinc-500"
+                    x-text="contasDetalhe.filter(c => c.banco_id === b.id).length || '—'"></td>
+                <td class="px-4 py-2.5 text-right">
+                  <button @click="excluirBanco(b.id, b.nome)" class="text-xs text-zinc-600 hover:text-red-400">Excluir</button>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ====== Categorias ====== -->
+    <div x-show="subView==='categorias'">
+      <p class="text-sm text-zinc-500 mb-4">
+        Categorias agrupam suas despesas e receitas (ex: Mercado, Combustível, Salário).
+      </p>
+
+      <div class="flex items-center justify-between mb-4">
+        <button x-show="!formCategoriaAberto" @click="abrirFormCategoria()"
+                class="text-sm text-amber-500 hover:text-amber-400 uppercase tracking-wider">
+          + Nova categoria
+        </button>
+        <div class="flex items-center gap-4">
+          <button @click="reaplicarPadroes()"
+                  title="Adiciona apenas as categorias/atribuições/regras que estiverem faltando. Não toca em nada existente."
+                  class="text-xs text-zinc-500 hover:text-emerald-400 uppercase tracking-wider">
+            + Reaplicar padrões
+          </button>
+          <button @click="resetarClassificacao()"
+                  title="Reorganiza categorias e regras pra estrutura padrão. Limpa classificação atual e reclassifica tudo."
+                  class="text-xs text-zinc-500 hover:text-amber-400 uppercase tracking-wider">
+            ↻ Resetar para estrutura padrão
+          </button>
+        </div>
+      </div>
+
+      <div x-show="formCategoriaAberto"
+           class="border border-amber-900/50 bg-amber-950/10 rounded-lg p-4 mb-4 grid grid-cols-5 gap-3">
+        <input type="text" placeholder="Emoji" x-model="categoriaForm.icone" maxlength="2"
+               class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded text-center">
+        <input type="text" placeholder="Nome" x-model="categoriaForm.nome"
+               class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded col-span-2">
+        <select x-model="categoriaForm.tipo" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded">
+          <option value="Despesa">Despesa</option>
+          <option value="Receita">Receita</option>
+        </select>
+        <div class="flex gap-2">
+          <button @click="salvarNovaCategoria()" class="bg-amber-500 text-zinc-950 px-4 py-2 text-sm rounded hover:bg-amber-400 flex-1">Salvar</button>
+          <button @click="formCategoriaAberto=false" class="px-3 py-2 text-sm text-zinc-400 hover:text-zinc-200">×</button>
+        </div>
+      </div>
+
+      <div class="border border-zinc-800 rounded-lg overflow-hidden">
+        <table class="w-full text-sm">
+          <thead class="bg-zinc-900 text-zinc-400 text-xs uppercase tracking-wider">
+            <tr>
+              <th class="text-left px-4 py-3 w-12"></th>
+              <th class="text-left px-4 py-3">Nome</th>
+              <th class="text-left px-4 py-3">Tipo</th>
+              <th class="text-center px-4 py-3" title="Essencial = gasto recorrente/obrigatório. Discricionário = onde dá pra cortar primeiro.">Essencial</th>
+              <th class="text-right px-4 py-3">Orçamento mensal</th>
+              <th class="px-4 py-3"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="c in categoriasDetalhe" :key="c.id">
+              <tr class="border-t border-zinc-900 hover:bg-zinc-900/40">
+                <td class="px-4 py-2.5 text-center text-lg" x-text="c.icone || '•'"></td>
+                <td class="px-4 py-2.5 font-medium" x-text="c.nome"></td>
+                <td class="px-4 py-2.5 text-xs" :class="c.tipo==='Receita' ? 'text-emerald-400' : 'text-zinc-400'" x-text="c.tipo"></td>
+                <td class="px-4 py-2.5 text-center">
+                  <button @click="toggleCategoriaEssencial(c)"
+                          x-show="c.tipo === 'Despesa'"
+                          class="text-base hover:scale-125 transition-transform"
+                          :class="c.essencial ? 'text-amber-400' : 'text-zinc-500'"
+                          :title="c.essencial ? 'Essencial. Clique pra marcar como discricionário.' : 'Discricionário. Clique pra marcar como essencial.'"
+                          x-text="c.essencial ? '★' : '☆'"></button>
+                  <span x-show="c.tipo !== 'Despesa'" class="text-zinc-700 text-xs">—</span>
+                </td>
+                <td class="px-4 py-2.5 text-right font-mono text-xs text-zinc-500" x-text="c.orcamento_mensal ? brl(c.orcamento_mensal) : '—'"></td>
+                <td class="px-4 py-2.5 text-right whitespace-nowrap">
+                  <button @click="abrirEdicaoCategoria(c)" class="text-xs text-zinc-500 hover:text-amber-400 mr-3">Editar</button>
+                  <button @click="excluirCategoria(c.id, c.nome)" class="text-xs text-zinc-600 hover:text-red-400">Excluir</button>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ====== Atribuições ====== -->
+    <div x-show="subView==='atribuicoes'">
+      <p class="text-sm text-zinc-500 mb-4">
+        Atribuições dizem <em>para quem ou o que</em> a despesa é (Pessoa: Micael, Andreina; Grupo: Casa, Cachorros, Carro…).
+      </p>
+
+      <button x-show="!formAtribuicaoAberto" @click="abrirFormAtribuicao()"
+              class="text-sm text-amber-500 hover:text-amber-400 uppercase tracking-wider mb-4">
+        + Nova atribuição
+      </button>
+
+      <div x-show="formAtribuicaoAberto"
+           class="border border-amber-900/50 bg-amber-950/10 rounded-lg p-4 mb-4 grid grid-cols-5 gap-3">
+        <input type="text" placeholder="Nome" x-model="atribuicaoForm.nome"
+               class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded col-span-2">
+        <select x-model="atribuicaoForm.tipo" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded">
+          <option value="Pessoa">Pessoa</option>
+          <option value="Grupo">Grupo</option>
+        </select>
+        <input type="color" x-model="atribuicaoForm.cor"
+               class="bg-zinc-900 border border-zinc-800 rounded h-9 w-full cursor-pointer"
+               title="Cor para gráficos">
+        <div class="flex gap-2">
+          <button @click="salvarNovaAtribuicao()" class="bg-amber-500 text-zinc-950 px-4 py-2 text-sm rounded hover:bg-amber-400 flex-1">Salvar</button>
+          <button @click="formAtribuicaoAberto=false" class="px-3 py-2 text-sm text-zinc-400 hover:text-zinc-200">×</button>
+        </div>
+      </div>
+
+      <div class="border border-zinc-800 rounded-lg overflow-hidden">
+        <table class="w-full text-sm">
+          <thead class="bg-zinc-900 text-zinc-400 text-xs uppercase tracking-wider">
+            <tr>
+              <th class="text-left px-4 py-3 w-12"></th>
+              <th class="text-left px-4 py-3">Nome</th>
+              <th class="text-left px-4 py-3">Tipo</th>
+              <th class="text-left px-4 py-3">Descrição</th>
+              <th class="px-4 py-3"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="a in atribuicoesDetalhe" :key="a.id">
+              <tr class="border-t border-zinc-900 hover:bg-zinc-900/40">
+                <td class="px-4 py-2.5 text-center">
+                  <span class="inline-block w-3 h-3 rounded-full" :style="`background-color: ${a.cor}`"></span>
+                </td>
+                <td class="px-4 py-2.5 font-medium" x-text="a.nome"></td>
+                <td class="px-4 py-2.5 text-xs text-zinc-400" x-text="a.tipo"></td>
+                <td class="px-4 py-2.5 text-xs text-zinc-500" x-text="a.descricao"></td>
+                <td class="px-4 py-2.5 text-right whitespace-nowrap">
+                  <button @click="abrirEdicaoAtribuicao(a)" class="text-xs text-zinc-500 hover:text-amber-400 mr-3">Editar</button>
+                  <button @click="excluirAtribuicao(a.id, a.nome)" class="text-xs text-zinc-600 hover:text-red-400">Excluir</button>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ====== Regras ====== -->
+    <div x-show="subView==='regras'">
+      <p class="text-sm text-zinc-500 mb-4">
+        Regras aplicam categoria + atribuição automaticamente quando uma palavra-chave aparece na descrição da transação.
+      </p>
+
+      <button @click="novaRegra()" class="text-sm text-amber-500 hover:text-amber-400 uppercase tracking-wider mb-4">
+        + Nova regra
+      </button>
+
+      <div x-show="editandoRegra" class="border border-amber-900/50 bg-amber-950/20 rounded-lg p-4 mb-4 grid grid-cols-5 gap-3">
+        <input type="text" placeholder="palavra-chave (ex: IFOOD)" x-model="regraForm.palavra_chave"
+               class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded col-span-2">
+        <select x-model="regraForm.categoria_id" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded">
+          <option value="">— categoria —</option>
+          <template x-for="c in categorias"><option :value="c.id" x-text="c.nome"></option></template>
+        </select>
+        <select x-model="regraForm.atribuicao_id" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded">
+          <option value="">— atribuição (opcional) —</option>
+          <template x-for="a in atribuicoes"><option :value="a.id" x-text="a.nome"></option></template>
+        </select>
+        <div class="flex gap-2">
+          <button @click="salvarRegra()" class="bg-amber-500 text-zinc-950 px-4 py-2 text-sm rounded hover:bg-amber-400">Salvar</button>
+          <button @click="editandoRegra=false" class="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200">Cancelar</button>
+        </div>
+      </div>
+
+      <div class="border border-zinc-800 rounded-lg overflow-hidden">
+        <table class="w-full text-sm">
+          <thead class="bg-zinc-900 text-zinc-400 text-xs uppercase tracking-wider">
+            <tr>
+              <th class="text-left px-4 py-3">Palavra-chave</th>
+              <th class="text-left px-4 py-3">Categoria</th>
+              <th class="text-left px-4 py-3">Atribuição</th>
+              <th class="text-left px-4 py-3">Prioridade</th>
+              <th class="text-left px-4 py-3">Comentário</th>
+              <th class="px-4 py-3"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="r in regras" :key="r.id">
+              <tr class="border-t border-zinc-900 hover:bg-zinc-900/40">
+                <td class="px-4 py-2.5 font-mono text-xs" x-text="r.palavra_chave"></td>
+                <td class="px-4 py-2.5 text-zinc-300" x-text="r.categoria || '—'"></td>
+                <td class="px-4 py-2.5 text-zinc-400" x-text="r.atribuicao || '—'"></td>
+                <td class="px-4 py-2.5 font-mono text-xs text-zinc-500" x-text="r.prioridade"></td>
+                <td class="px-4 py-2.5 text-xs text-zinc-500" x-text="r.comentario"></td>
+                <td class="px-4 py-2.5 text-right">
+                  <button @click="excluirRegra(r.id)" class="text-xs text-zinc-600 hover:text-red-400">Excluir</button>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ====== Arquivos (faturas/extratos importados) ====== -->
+    <div x-show="subView==='arquivos'">
+      <p class="text-sm text-zinc-500 mb-4">
+        Lista de PDFs e OFX importados. Excluir um arquivo aqui também remove as transações que vieram dele.
+      </p>
+
+      <!-- MAPA DE COBERTURA -->
+      <div x-show="cobertura.contas && cobertura.contas.length > 0" class="mb-6 border border-zinc-800 rounded-lg p-5">
+        <div class="flex items-baseline justify-between mb-4">
+          <div>
+            <h3 class="font-serif text-lg text-zinc-200">Cobertura por mês</h3>
+            <p class="text-xs text-zinc-500 mt-0.5">
+              <span class="inline-block w-2.5 h-2.5 bg-emerald-700/70 rounded-sm align-middle"></span>
+              importado ·
+              <span class="inline-block w-2.5 h-2.5 bg-red-900/40 border border-red-700/50 rounded-sm align-middle"></span>
+              buraco ·
+              <span class="inline-block w-2.5 h-2.5 bg-zinc-800/70 rounded-sm align-middle"></span>
+              falta ·
+              <span class="inline-block w-2.5 h-2.5 border border-zinc-800 rounded-sm align-middle"></span>
+              não se aplica
+              <span class="text-zinc-600">— clique numa célula vazia pra marcar o início de uso da conta</span>
+            </p>
+          </div>
+          <select x-model="cobertura.meses_n" @change="carregarCobertura()" class="bg-zinc-900 border border-zinc-800 px-3 py-1.5 text-xs rounded">
+            <option value="6">Últimos 6 meses</option>
+            <option value="12">Últimos 12 meses</option>
+            <option value="24">Últimos 24 meses</option>
+          </select>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs">
+            <thead>
+              <tr>
+                <th class="text-left px-3 py-2 text-zinc-500 font-normal">Conta</th>
+                <template x-for="m in cobertura.meses" :key="m">
+                  <th class="px-1 py-2 text-zinc-500 font-normal text-center font-mono whitespace-nowrap" x-text="m.split('/')[0] + '/' + m.split('/')[1].slice(2)"></th>
+                </template>
+                <th class="px-3 py-2 text-zinc-500 font-normal text-right">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="c in cobertura.contas" :key="c.id">
+                <tr class="border-t border-zinc-900">
+                  <td class="px-3 py-2.5">
+                    <div class="flex items-center gap-2">
+                      <span class="w-2 h-2 rounded-full" :style="`background-color: ${c.banco_cor || '#888'}`"></span>
+                      <span class="text-zinc-200" x-text="c.nome_completo"></span>
+                      <span class="text-zinc-600 text-xs"
+                            x-text="c.tipo === 'Cartão de Crédito' ? '· cartão' : '· conta'"></span>
+                      <span x-show="c.buracos > 0" class="text-red-400 text-xs"
+                            x-text="'· ' + c.buracos + ' buraco' + (c.buracos > 1 ? 's' : '')"></span>
+                    </div>
+                  </td>
+                  <template x-for="cel in c.cobertura" :key="cel.mes">
+                    <td class="px-1 py-2.5 text-center">
+                      <span x-show="cel.status === 'tem'"
+                            @click="marcarInicioUso(c, cel.mes)"
+                            class="inline-block w-5 h-5 rounded-sm bg-emerald-700/70 text-emerald-200 text-[10px] leading-5 cursor-pointer hover:bg-emerald-600/70"
+                            :title="cel.mes + ' — importado. Clique pra marcar como início de uso (anteriores ficam não-se-aplica)'">✓</span>
+                      <span x-show="cel.status === 'buraco'"
+                            @click="marcarInicioUso(c, cel.mes)"
+                            class="inline-block w-5 h-5 rounded-sm bg-red-900/40 border border-red-700/50 cursor-pointer hover:border-red-500"
+                            :title="cel.mes + ' — buraco. Clique pra marcar como início de uso (anteriores ficam não-se-aplica)'"></span>
+                      <span x-show="cel.status === 'vazio'"
+                            @click="marcarInicioUso(c, cel.mes)"
+                            class="inline-block w-5 h-5 rounded-sm bg-zinc-800/70 cursor-pointer hover:bg-zinc-700"
+                            :title="cel.mes + ' — sem arquivo. Clique pra marcar como início de uso (anteriores ficam não-se-aplica)'"></span>
+                      <span x-show="cel.status === 'nao_se_aplica'"
+                            @click="limparInicioUso(c, cel.mes)"
+                            class="inline-block w-5 h-5 rounded-sm border border-zinc-800 cursor-pointer hover:border-zinc-600"
+                            :title="cel.mes + ' — não se aplica (antes do uso). Clique pra desfazer'">·</span>
+                    </td>
+                  </template>
+                  <td class="px-3 py-2.5 text-right text-zinc-400 font-mono"
+                      x-text="c.total_arquivos + '/' + c.total_esperado"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- FILTROS -->
+      <div class="flex items-center gap-3 mb-4 flex-wrap">
+        <input type="text" placeholder="Buscar por nome do arquivo..."
+               x-model="filtrosFaturas.busca"
+               class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded flex-1 min-w-[200px]">
+        <select x-model="filtrosFaturas.banco" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded">
+          <option value="">Todos os bancos</option>
+          <template x-for="b in bancosUnicosDeFaturas()"><option :value="b" x-text="b"></option></template>
+        </select>
+        <select x-model="filtrosFaturas.titular" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded">
+          <option value="">Todos os titulares</option>
+          <template x-for="t in titularesUnicosDeFaturas()"><option :value="t" x-text="t"></option></template>
+        </select>
+        <select x-model="filtrosFaturas.tipo_conta" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded">
+          <option value="">Todos os tipos</option>
+          <option value="Cartão de Crédito">Cartão de Crédito</option>
+          <option value="Conta Corrente">Conta Corrente</option>
+        </select>
+        <select x-model="filtrosFaturas.mes" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded font-mono">
+          <option value="">Todos os meses</option>
+          <template x-for="m in mesesUnicosDeFaturas()"><option :value="m" x-text="m"></option></template>
+        </select>
+        <span class="text-sm text-zinc-500 ml-auto">
+          <span class="font-mono" x-text="faturasFiltradas().length"></span> de
+          <span class="font-mono" x-text="faturas.length"></span>
+        </span>
+      </div>
+
+      <div class="border border-zinc-800 rounded-lg overflow-hidden">
+        <table class="w-full text-sm">
+          <thead class="bg-zinc-900 text-zinc-400 text-xs uppercase tracking-wider">
+            <tr>
+              <th class="text-left px-4 py-3">Banco</th>
+              <th class="text-left px-4 py-3">Tipo</th>
+              <th class="text-left px-4 py-3">Titular</th>
+              <th class="text-left px-4 py-3">Mês ref.</th>
+              <th class="text-left px-4 py-3">Vencimento</th>
+              <th class="text-right px-4 py-3">Total</th>
+              <th class="text-left px-4 py-3">Arquivo</th>
+              <th class="text-left px-4 py-3">Importado em</th>
+              <th class="px-4 py-3"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="f in faturasFiltradas()" :key="f.id">
+              <tr class="border-t border-zinc-900 hover:bg-zinc-900/40">
+                <td class="px-4 py-2.5" x-text="f.banco"></td>
+                <td class="px-4 py-2.5 text-xs text-zinc-500"
+                    x-text="f.tipo_conta === 'Cartão de Crédito' ? 'Cartão' : (f.tipo_conta === 'Conta Corrente' ? 'Extrato' : f.tipo_conta)"></td>
+                <td class="px-4 py-2.5 text-xs text-zinc-400" x-text="f.titular || '(você)'"></td>
+                <td class="px-4 py-2.5 font-mono text-xs" x-text="f.mes_referencia"></td>
+                <td class="px-4 py-2.5 font-mono text-xs text-zinc-400" x-text="formatarData(f.data_vencimento)"></td>
+                <td class="px-4 py-2.5 text-right font-mono" x-text="brl(f.total)"></td>
+                <td class="px-4 py-2.5 text-xs text-zinc-500" x-text="f.pdf_filename"></td>
+                <td class="px-4 py-2.5 text-xs text-zinc-500" x-text="formatarDataHora(f.importada_em)"></td>
+                <td class="px-4 py-2.5 text-right">
+                  <button @click="excluirFatura(f.id)" class="text-xs text-zinc-600 hover:text-red-400">Excluir</button>
+                </td>
+              </tr>
+            </template>
+            <tr x-show="faturasFiltradas().length === 0 && faturas.length === 0">
+              <td colspan="9" class="px-4 py-8 text-center text-zinc-600 text-sm">
+                Nenhum arquivo importado ainda. Use "Importar arquivo" no topo.
+              </td>
+            </tr>
+            <tr x-show="faturasFiltradas().length === 0 && faturas.length > 0">
+              <td colspan="9" class="px-4 py-8 text-center text-zinc-600 text-sm">
+                Nenhum arquivo bate com os filtros. Limpe os filtros pra ver tudo.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="mt-6 text-xs text-zinc-500 leading-relaxed">
+      <strong class="text-zinc-400">Sobre exclusão:</strong> não dá pra excluir nada que esteja sendo usado por transações ou regras (proteção contra perda acidental).
+      Se precisar, primeiro reatribua tudo e depois exclui.
+    </div>
+  </main>
+
+  <!-- ============ MODAL: saldo inicial manual ============ -->
+  <div x-show="modalSaldo.show" x-transition class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+    <div class="bg-zinc-900 border border-zinc-800 rounded-lg max-w-md w-full p-6">
+      <h3 class="font-serif text-xl mb-2">Saldo inicial da conta</h3>
+      <p class="text-sm text-zinc-400 mb-4">
+        Informe o saldo desta conta numa data específica. O app vai usar isso pra calcular
+        o saldo nos meses sem extrato OFX importado.
+      </p>
+
+      <div class="space-y-3 mb-5">
+        <div>
+          <label class="block text-xs text-zinc-500 mb-1">Saldo</label>
+          <input type="number" step="0.01" x-model="modalSaldo.valor" placeholder="Ex: 1234.56"
+                 class="w-full bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm rounded font-mono">
+        </div>
+        <div>
+          <label class="block text-xs text-zinc-500 mb-1">Data deste saldo</label>
+          <input type="date" x-model="modalSaldo.data"
+                 class="w-full bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm rounded font-mono">
+        </div>
+      </div>
+
+      <p class="text-xs text-zinc-600 mb-4">
+        Dica: use o saldo do dia anterior à primeira transação registrada nesta conta.
+        Por exemplo, se a primeira transação é 01/12/2025, use o saldo de 30/11/2025.
+      </p>
+
+      <div class="flex justify-end gap-2">
+        <button x-show="extrato.conta && extrato.conta.saldo_inicial_manual !== null"
+                @click="limparSaldoManual()"
+                class="px-4 py-2 text-sm text-red-400 hover:text-red-300 mr-auto">
+          Remover saldo
+        </button>
+        <button @click="modalSaldo.show = false" class="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200">
+          Cancelar
+        </button>
+        <button @click="salvarSaldoManual()"
+                class="bg-amber-500 hover:bg-amber-400 text-zinc-950 px-4 py-2 text-sm rounded">
+          Salvar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: escolha de conta ============ -->
+  <div x-show="modalEscolhaConta.show" x-transition class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+    <div class="bg-zinc-900 border border-zinc-800 rounded-lg max-w-md w-full p-6">
+      <h3 class="font-serif text-xl mb-2">Qual conta receberá este extrato?</h3>
+      <p class="text-sm text-zinc-400 mb-4">
+        Encontrei mais de uma conta-corrente do <span class="text-amber-500" x-text="modalEscolhaConta.banco"></span>.
+        Escolha qual receberá as transações do arquivo
+        <span class="font-mono text-zinc-300 text-xs" x-text="modalEscolhaConta.filename"></span>.
+      </p>
+
+      <div class="space-y-2 mb-5">
+        <template x-for="c in modalEscolhaConta.candidatas" :key="c.id">
+          <label class="flex items-center gap-3 px-3 py-2.5 border rounded cursor-pointer hover:bg-zinc-800/50"
+                 :class="modalEscolhaConta.escolhida == c.id ? 'border-amber-700 bg-amber-950/20' : 'border-zinc-800'">
+            <input type="radio" x-model="modalEscolhaConta.escolhida" :value="c.id"
+                   class="accent-amber-500">
+            <div class="flex-1">
+              <div class="text-sm text-zinc-200" x-text="c.nome"></div>
+              <div class="text-xs text-zinc-500">
+                titular: <span x-text="c.titular"></span>
+              </div>
+            </div>
+          </label>
+        </template>
+      </div>
+
+      <div class="flex justify-end gap-2">
+        <button @click="cancelarEscolhaConta()" class="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200">
+          Cancelar este arquivo
+        </button>
+        <button @click="confirmarEscolhaConta()" class="bg-amber-500 hover:bg-amber-400 text-zinc-950 px-4 py-2 text-sm rounded">
+          Importar pra esta conta
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: senha solicitada ============ -->
+  <div x-show="modalSenha.show" x-transition class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+    <div class="bg-zinc-900 border border-zinc-800 rounded-lg max-w-md w-full p-6">
+      <h3 class="font-serif text-xl mb-2">PDF protegido</h3>
+      <p class="text-sm text-zinc-400 mb-4">
+        O PDF <span class="font-mono text-amber-500" x-text="modalSenha.filename"></span>
+        está protegido por senha. Forneça a senha pra continuar.
+      </p>
+      <input :type="senhaVisivel ? 'text' : 'password'" x-model="modalSenha.senha"
+             @keyup.enter="confirmarSenhaModal()" placeholder="senha do PDF"
+             class="w-full bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm rounded font-mono mb-3">
+      <div class="flex items-center gap-3 mb-4">
+        <button @click="senhaVisivel = !senhaVisivel" class="text-xs text-zinc-500 hover:text-zinc-300"
+                x-text="senhaVisivel ? 'ocultar' : 'mostrar'"></button>
+        <span class="text-xs text-zinc-600">geralmente CPF (só números) ou data de nascimento</span>
+      </div>
+      <div class="flex justify-end gap-2">
+        <button @click="modalSenha.show = false" class="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200">Cancelar</button>
+        <button @click="confirmarSenhaModal()" class="bg-amber-500 hover:bg-amber-400 text-zinc-950 px-4 py-2 text-sm rounded">
+          Tentar com esta senha
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: oferecer salvar senha ============ -->
+  <div x-show="modalSalvarSenha.show" x-transition class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+    <div class="bg-zinc-900 border border-emerald-900/60 rounded-lg max-w-md w-full p-6">
+      <h3 class="font-serif text-xl mb-2 text-emerald-400">Senha funcionou ✓</h3>
+      <p class="text-sm text-zinc-400 mb-4">
+        Quer salvar essa senha pro <span class="font-medium text-zinc-200" x-text="modalSalvarSenha.banco"></span>
+        pra próximas faturas serem importadas automaticamente?
+      </p>
+      <div class="flex justify-end gap-2">
+        <button @click="modalSalvarSenha.show = false" class="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200">Não, obrigado</button>
+        <button @click="salvarSenhaSugerida()" class="bg-emerald-500 hover:bg-emerald-400 text-zinc-950 px-4 py-2 text-sm rounded">
+          Salvar senha
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: EDITAR CATEGORIA ============ -->
+  <div x-show="editandoCategoria !== null" x-transition class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" style="display: none;">
+    <div class="bg-zinc-950 border border-zinc-800 rounded-lg p-6 max-w-md w-full" @click.outside="editandoCategoria = null">
+      <h2 class="text-lg font-medium mb-1">Editar categoria</h2>
+      <p class="text-xs text-zinc-500 mb-5" x-show="editandoCategoria"
+         x-text="'Originalmente: ' + (editandoCategoria?.nome || '')"></p>
+
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Emoji / Ícone</label>
+          <input type="text" x-model="editCategoriaForm.icone" maxlength="2"
+                 class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded text-center w-20">
+          <span class="ml-3 text-xs text-zinc-600">opcional</span>
+        </div>
+        <div>
+          <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Nome</label>
+          <input type="text" x-model="editCategoriaForm.nome" @keydown.enter="salvarEdicaoCategoria()"
+                 class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full">
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Tipo</label>
+            <select x-model="editCategoriaForm.tipo" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full">
+              <option value="Despesa">Despesa</option>
+              <option value="Receita">Receita</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Orçamento mensal</label>
+            <input type="number" min="0" step="50" x-model="editCategoriaForm.orcamento_mensal"
+                   class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full font-mono">
+          </div>
+        </div>
+        <div x-show="editCategoriaForm.tipo === 'Despesa'">
+          <label class="flex items-center gap-2 cursor-pointer text-sm text-zinc-300">
+            <input type="checkbox" x-model="editCategoriaForm.essencial" class="accent-amber-500">
+            <span>Essencial</span>
+            <span class="text-xs text-zinc-600">(★ por padrão pra novas transações)</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="flex gap-3 mt-6 justify-end">
+        <button @click="editandoCategoria = null" class="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200">Cancelar</button>
+        <button @click="salvarEdicaoCategoria()" class="bg-amber-500 text-zinc-950 px-4 py-2 text-sm font-medium rounded hover:bg-amber-400">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: EDITAR ATRIBUIÇÃO ============ -->
+  <div x-show="editandoAtribuicao !== null" x-transition class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" style="display: none;">
+    <div class="bg-zinc-950 border border-zinc-800 rounded-lg p-6 max-w-md w-full" @click.outside="editandoAtribuicao = null">
+      <h2 class="text-lg font-medium mb-1">Editar atribuição</h2>
+      <p class="text-xs text-zinc-500 mb-5" x-show="editandoAtribuicao"
+         x-text="'Originalmente: ' + (editandoAtribuicao?.nome || '')"></p>
+
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Nome</label>
+          <input type="text" x-model="editAtribuicaoForm.nome" @keydown.enter="salvarEdicaoAtribuicao()"
+                 class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full">
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Tipo</label>
+            <select x-model="editAtribuicaoForm.tipo" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full">
+              <option value="Pessoa">Pessoa</option>
+              <option value="Grupo">Grupo</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Cor</label>
+            <input type="color" x-model="editAtribuicaoForm.cor"
+                   class="bg-zinc-900 border border-zinc-800 px-2 py-1 rounded w-full h-[38px] cursor-pointer">
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Descrição</label>
+          <input type="text" x-model="editAtribuicaoForm.descricao"
+                 placeholder="opcional"
+                 class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full">
+        </div>
+      </div>
+
+      <div class="flex gap-3 mt-6 justify-end">
+        <button @click="editandoAtribuicao = null" class="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200">Cancelar</button>
+        <button @click="salvarEdicaoAtribuicao()" class="bg-amber-500 text-zinc-950 px-4 py-2 text-sm font-medium rounded hover:bg-amber-400">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: REVISÃO DE SUSPEITAS DE DUPLICATA ============ -->
+  <div x-show="modalSuspeitas" x-transition class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" style="display: none;">
+    <div class="bg-zinc-950 border border-zinc-800 rounded-lg p-6 max-w-4xl w-full max-h-[85vh] flex flex-col" @click.outside="modalSuspeitas = false">
+      <div class="flex items-baseline justify-between mb-4">
+        <div>
+          <h2 class="text-lg font-medium">Revisar suspeitas de duplicata</h2>
+          <p class="text-xs text-zinc-500 mt-1">
+            Encontradas <span class="font-mono text-amber-400" x-text="suspeitasItems.length"></span>
+            possíveis duplicatas. Compare cada uma com a transação "gêmea" e decida.
+          </p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button @click="aceitarTodasSuspeitas()" class="text-xs text-zinc-400 hover:text-emerald-400 px-2 py-1">Aceitar todas</button>
+          <button @click="descartarTodasSuspeitas()" class="text-xs text-zinc-400 hover:text-red-400 px-2 py-1">Descartar todas</button>
+        </div>
+      </div>
+
+      <div x-show="carregandoSuspeitas" class="text-center py-8 text-zinc-500 text-sm">Carregando...</div>
+
+      <div x-show="!carregandoSuspeitas && suspeitasItems.length === 0" class="text-center py-8 text-zinc-500 text-sm">
+        Nenhuma suspeita pendente.
+      </div>
+
+      <div x-show="!carregandoSuspeitas && suspeitasItems.length > 0" class="overflow-y-auto flex-1 space-y-3">
+        <template x-for="item in suspeitasItems" :key="item.suspeita.id">
+          <div class="bg-zinc-900/50 border border-zinc-800 rounded-lg p-4">
+            <div class="grid grid-cols-2 gap-4 mb-3">
+              <!-- Suspeita (nova) -->
+              <div class="border-l-2 border-amber-700/60 pl-3">
+                <div class="text-xs uppercase tracking-wider text-amber-400 mb-1">Suspeita (nova)</div>
+                <div class="text-sm text-zinc-200" x-text="item.suspeita.descricao"></div>
+                <div class="text-xs text-zinc-500 mt-1">
+                  <span class="font-mono" x-text="formatarData(item.suspeita.data)"></span> ·
+                  <span class="font-mono" x-text="brl(item.suspeita.valor)"></span>
+                  <span x-show="item.suspeita.parcela"> · parcela <span class="font-mono" x-text="item.suspeita.parcela"></span></span>
+                </div>
+                <div class="text-xs text-zinc-600 mt-1" x-show="item.suspeita.observacoes" x-text="item.suspeita.observacoes"></div>
+              </div>
+              <!-- Gêmea (já no banco) -->
+              <div class="border-l-2 border-zinc-700 pl-3">
+                <div class="text-xs uppercase tracking-wider text-zinc-500 mb-1">Já existente (gêmea)</div>
+                <div x-show="item.gemea">
+                  <div class="text-sm text-zinc-300" x-text="item.gemea && item.gemea.descricao"></div>
+                  <div class="text-xs text-zinc-500 mt-1">
+                    <span class="font-mono" x-text="item.gemea && formatarData(item.gemea.data)"></span> ·
+                    <span class="font-mono" x-text="item.gemea && brl(item.gemea.valor)"></span>
+                    <span x-show="item.gemea && item.gemea.parcela"> · parcela <span class="font-mono" x-text="item.gemea && item.gemea.parcela"></span></span>
+                  </div>
+                  <div class="text-xs text-zinc-600 mt-1" x-show="item.gemea && item.gemea.observacoes" x-text="item.gemea && item.gemea.observacoes"></div>
+                </div>
+                <div x-show="!item.gemea" class="text-xs text-zinc-600 italic">Gêmea não encontrada (já foi excluída?)</div>
+              </div>
+            </div>
+            <div class="flex justify-end gap-2">
+              <button @click="descartarSuspeita(item.suspeita.id)"
+                      class="text-xs text-zinc-400 hover:text-red-400 px-3 py-1.5 rounded border border-zinc-800 hover:border-red-900">
+                É duplicata · descartar
+              </button>
+              <button @click="aceitarSuspeita(item.suspeita.id)"
+                      class="text-xs text-zinc-200 hover:text-emerald-400 px-3 py-1.5 rounded border border-zinc-700 hover:border-emerald-800">
+                Não é duplicata · aceitar
+              </button>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <div class="flex justify-end mt-4">
+        <button @click="modalSuspeitas = false" class="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: NOVA TRANSAÇÃO MANUAL ============ -->
+  <div x-show="modalNovaTransacao" x-transition class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" style="display: none;">
+    <div class="bg-zinc-950 border border-zinc-800 rounded-lg p-6 max-w-lg w-full" @click.outside="modalNovaTransacao = false">
+      <h2 class="text-lg font-medium mb-1">Nova transação</h2>
+      <p class="text-xs text-zinc-500 mb-5">Lançamento manual (dinheiro, ajuste, transferência avulsa)</p>
+
+      <div class="space-y-4">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Data</label>
+            <input type="date" x-model="novaTransacaoForm.data"
+                   class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full font-mono">
+          </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Tipo</label>
+            <select x-model="novaTransacaoForm.tipo" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full">
+              <option value="Despesa">Despesa</option>
+              <option value="Receita">Receita</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Descrição</label>
+          <input type="text" x-model="novaTransacaoForm.descricao"
+                 placeholder="Ex: Almoço restaurante"
+                 class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full">
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Valor (R$)</label>
+            <input type="number" min="0" step="0.01" x-model="novaTransacaoForm.valor"
+                   class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full font-mono">
+          </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Conta</label>
+            <select x-model="novaTransacaoForm.conta_id" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full">
+              <option value="">— escolha —</option>
+              <template x-for="c in contas" :key="c.id">
+                <option :value="c.id" x-text="c.nome + ' (' + c.tipo + ')'"></option>
+              </template>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Categoria</label>
+            <select x-model="novaTransacaoForm.categoria_id" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full">
+              <option value="">— auto —</option>
+              <template x-for="c in categorias" :key="c.id">
+                <option :value="c.id" x-text="c.nome"></option>
+              </template>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Atribuição</label>
+            <select x-model="novaTransacaoForm.atribuicao_id" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full">
+              <option value="">— sem —</option>
+              <template x-for="a in atribuicoes" :key="a.id">
+                <option :value="a.id" x-text="a.nome"></option>
+              </template>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Observações <span class="text-zinc-600 normal-case">(opcional)</span></label>
+          <input type="text" x-model="novaTransacaoForm.observacoes"
+                 class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full">
+        </div>
+      </div>
+
+      <div class="flex gap-3 mt-6 justify-end">
+        <button @click="modalNovaTransacao = false" class="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200">Cancelar</button>
+        <button @click="salvarNovaTransacao()" class="bg-amber-500 text-zinc-950 px-4 py-2 text-sm font-medium rounded hover:bg-amber-400">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ FOOTER ============ -->
+  <footer class="border-t border-zinc-800/80 mt-16">
+    <div class="max-w-[1600px] mx-auto px-8 py-6 text-xs text-zinc-600 flex justify-end items-center">
+      <div class="font-mono">v1.2</div>
+    </div>
+  </footer>
+
+</div>
+
+<script src="/static/app.js?v={{ v }}"></script>
+<script>
+  // Conexão "viva": mantém um EventSource aberto com o launcher (.exe). Enquanto
+  // esta janela existir, a conexão fica de pé e o servidor segue rodando. Quando
+  // a janela fecha, a conexão cai e o servidor se encerra sozinho (~6s depois).
+  // Inofensivo quando servido por uvicorn em dev (a rota /api/stream só existe
+  // no modo .exe; o EventSource apenas tenta reconectar e não atrapalha).
+  (function () {
+    try { new EventSource('/api/stream'); } catch (e) {}
+  })();
+</script>
+</body>
+</html>

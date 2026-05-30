@@ -1,0 +1,43 @@
+/* Esconde elementos com x-cloak até o Alpine inicializar (evita flash) */
+[x-cloak] { display: none !important; }
+
+/* Tipografia */
+.font-serif { font-family: 'Fraunces', Georgia, serif; font-feature-settings: 'ss01', 'ss02'; }
+.font-sans  { font-family: 'IBM Plex Sans', -apple-system, sans-serif; }
+.font-mono  { font-family: 'IBM Plex Mono', 'SF Mono', Menlo, monospace; }
+
+/* Scrollbar dark */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: #09090b; }
+::-webkit-scrollbar-thumb { background: #27272a; border-radius: 5px; }
+::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+
+/* Selects custom */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='%2371717a' stroke-width='2'%3E%3Cpolyline points='3 5 6 8 9 5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+  padding-right: 1.75rem;
+}
+
+/* Inline selects nas tabelas - sem seta */
+table select {
+  background-image: none;
+  padding-right: 0.25rem;
+}
+
+/* Animações sutis */
+* { transition-property: color, background-color, border-color; transition-duration: 100ms; }
+button { transition: all 150ms ease; }
+
+/* Foco */
+input:focus, select:focus {
+  outline: none;
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.2);
+}
+
+/* Tabela hover */
+tbody tr { transition: background-color 100ms ease; }

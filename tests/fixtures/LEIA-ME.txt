@@ -1,0 +1,7 @@
+Coloque aqui PDFs de fatura reais (Nubank/Bradesco/Santander/Mercado Pago)
+para validar a extração nova (pypdfium2) contra a antiga (Poppler).
+
+Rode:  python tests/comparar_extracao.py
+(use --senha SENHA se o PDF for protegido)
+
+Pode apagar os PDFs depois — são só pra teste local.

@@ -1,0 +1,5 @@
+# Dependências só para desenvolvimento / build (não vão pro app final).
+-r requirements.txt
+pytest>=8            # testes:  python -m pytest
+pyinstaller>=6       # gerar o .exe:  powershell -File build_exe.ps1
+fpdf2>=2.8           # gerar PDFs sintéticos nos testes de extração

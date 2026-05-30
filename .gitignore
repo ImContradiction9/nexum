@@ -1,0 +1,35 @@
+# Dados do usuário (banco financeiro + backups) — NUNCA versionar
+/data/
+
+# Artefatos de build
+/dist/
+/build/
+*.spec.bak
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Faturas/extratos reais usados em testes locais (dados pessoais)
+/tests/fixtures/*.pdf
+/tests/fixtures/*.ofx
+/tests/fixtures/*.csv
+
+# Logs / temporários
+*.log
+*.part
+_selftest.txt
+
+# Ferramentas locais / IDE
+.claude/
+.vscode/
+.idea/
+chrome-profile/
+
+# SO
+Thumbs.db
+.DS_Store
+desktop.ini
