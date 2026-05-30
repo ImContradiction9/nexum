@@ -29,13 +29,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $names = ""
-          try { $names = gh release view $env:GITHUB_REF_NAME --json assets -q '.assets[].name' } catch {}
+          try { $names = gh release view $env:GITHUB_REF_NAME --json assets -q '.assets[].name' 2>$null } catch {}
+          # gh sai com codigo 1 quando a release ainda nao existe — isso e
+          # esperado (vamos buildar). Zera o codigo pra nao derrubar o passo.
+          $global:LASTEXITCODE = 0
           if ($names -match 'NexumSetup\.exe') {
             "exists=true" >> $env:GITHUB_OUTPUT
             Write-Host "Release ja tem NexumSetup.exe -> pulando build."
           } else {
             "exists=false" >> $env:GITHUB_OUTPUT
+            Write-Host "Release ainda nao tem o instalador -> vai buildar."
           }
+          exit 0
 
       - name: Setup Python
         if: steps.check.outputs.exists != 'true'
