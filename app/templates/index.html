@@ -33,13 +33,17 @@
        class="bg-amber-500/10 border-b border-amber-500/30">
     <div class="max-w-[1600px] mx-auto px-8 py-3 flex items-center justify-between gap-4 text-sm">
       <div class="flex items-center gap-3 text-amber-200">
-        <span class="text-lg">⬆️</span>
-        <span>
+        <span class="text-lg" x-text="instalandoUpdate ? '⏳' : '⬆️'"></span>
+        <span x-show="!instalandoUpdate">
           Nova versão do Nexum disponível:
           <strong x-text="appUpdate.versao_disponivel"></strong>
           <span class="text-amber-200/60" x-text="'(você tem ' + appUpdate.versao_atual + ')'"></span>
         </span>
-        <a x-show="appUpdate.url_release" :href="appUpdate.url_release" target="_blank"
+        <span x-show="instalandoUpdate">
+          Atualizando para <strong x-text="appUpdate.versao_disponivel"></strong> e fazendo backup do banco…
+          o Nexum vai reiniciar sozinho.
+        </span>
+        <a x-show="appUpdate.url_release && !instalandoUpdate" :href="appUpdate.url_release" target="_blank"
            class="underline text-amber-300/80 hover:text-amber-200">ver notas</a>
       </div>
       <div class="flex items-center gap-2">
@@ -51,7 +55,7 @@
         </button>
         <a x-show="!appUpdate.instalado && appUpdate.url_release" :href="appUpdate.url_release" target="_blank"
            class="px-3 py-1.5 rounded bg-amber-500 text-zinc-950 font-medium hover:bg-amber-400">Baixar</a>
-        <button @click="updateDispensado = true"
+        <button x-show="!instalandoUpdate" @click="updateDispensado = true"
                 class="px-2 py-1.5 text-amber-200/60 hover:text-amber-200" title="Dispensar">✕</button>
       </div>
     </div>
@@ -1598,9 +1602,11 @@
           <span x-show="!appUpdate.tem_atualizacao && !appUpdate.erro" class="text-emerald-500">• em dia</span>
         </p>
         <p class="text-xs text-zinc-600 mb-3">
-          Repositório do GitHub onde as versões são publicadas (formato
-          <code class="text-zinc-400">usuario/repo</code>). As releases devem conter
-          o <code class="text-zinc-400">NexumSetup.exe</code> como anexo.
+          O app verifica e <strong class="text-zinc-400">instala atualizações sozinho ao abrir</strong>
+          (fazendo backup do banco antes). O repositório padrão já vem configurado —
+          o campo abaixo é opcional, só pra apontar pra outro repositório
+          (formato <code class="text-zinc-400">usuario/repo</code>; releases com o
+          <code class="text-zinc-400">NexumSetup.exe</code> anexado).
         </p>
         <div class="flex gap-2 mb-2">
           <input x-model="config.atualizacao_repo" placeholder="usuario/nexum"

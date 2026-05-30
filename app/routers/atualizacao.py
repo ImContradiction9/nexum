@@ -23,14 +23,24 @@ router = APIRouter()
 
 CONFIG_REPO = "atualizacao_repo"
 
+# Repositório oficial onde as releases do Nexum são publicadas. É o padrão
+# embutido — o usuário não precisa configurar nada pra receber atualizações.
+# Pode ser sobrescrito por env (NEXUM_UPDATE_REPO) ou pela config 'atualizacao_repo'.
+REPO_PADRAO = "ImContradiction9/nexum"
+
 
 def _repo(db: Session) -> str:
-    """Slug 'usuario/repo' do GitHub: env tem prioridade, senão config."""
+    """Slug 'usuario/repo' do GitHub.
+
+    Prioridade: env NEXUM_UPDATE_REPO → config 'atualizacao_repo' → REPO_PADRAO.
+    Assim funciona "de fábrica", sem o usuário precisar digitar o repositório.
+    """
     env = os.environ.get("NEXUM_UPDATE_REPO")
     if env:
         return env.strip()
     cfg = db.query(Configuracao).filter(Configuracao.chave == CONFIG_REPO).first()
-    return (cfg.valor if cfg else "") or ""
+    valor = (cfg.valor if cfg else "") or ""
+    return valor or REPO_PADRAO
 
 
 def _instalado() -> bool:
@@ -55,6 +65,14 @@ def instalar(db: Session = Depends(get_db)):
     if not info["tem_atualizacao"]:
         raise HTTPException(400, info.get("erro") or "Não há atualização disponível.")
 
+    # Backup do banco ANTES de qualquer coisa — a versão nova pode rodar
+    # migrações de schema; se algo der errado, a cópia pré-update fica salva.
+    from ..backup import fazer_backup
+    try:
+        backup_path = fazer_backup(DB_PATH, forcar=True)
+    except Exception:
+        backup_path = None
+
     update_dir = Path(DB_PATH).parent / "update"
     setup = update_dir / "NexumSetup.exe"
     try:
@@ -75,4 +93,4 @@ def instalar(db: Session = Depends(get_db)):
     )
     # 1s dá tempo da resposta HTTP voltar antes de matar o processo.
     threading.Timer(1.0, lambda: os._exit(0)).start()
-    return {"ok": True, "versao": info["versao_disponivel"]}
+    return {"ok": True, "versao": info["versao_disponivel"], "backup": backup_path}

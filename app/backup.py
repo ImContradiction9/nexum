@@ -17,10 +17,12 @@ _PREFIXO = "financeiro-"
 _SUFIXO = ".db"
 
 
-def fazer_backup(db_path: str, max_backups: int = MAX_BACKUPS) -> str | None:
+def fazer_backup(db_path: str, max_backups: int = MAX_BACKUPS,
+                 forcar: bool = False) -> str | None:
     """
     Copia o banco para data/backups/financeiro-AAAAMMDD-HHMMSS.db.
-    No máximo um backup por dia (se já existe um de hoje, não duplica).
+    No máximo um backup por dia (se já existe um de hoje, não duplica) — exceto
+    com `forcar=True`, que sempre cria um (usado antes de uma atualização do app).
     Mantém apenas os `max_backups` mais recentes. Tolerante a falha —
     nunca derruba a inicialização do app.
 
@@ -35,13 +37,19 @@ def fazer_backup(db_path: str, max_backups: int = MAX_BACKUPS) -> str | None:
         pasta.mkdir(parents=True, exist_ok=True)
 
         hoje = datetime.now().strftime("%Y%m%d")
-        # Já existe backup de hoje? Então não duplica.
-        if any(p.name.startswith(f"{_PREFIXO}{hoje}") for p in pasta.glob(f"{_PREFIXO}*{_SUFIXO}")):
+        # Já existe backup de hoje? Então não duplica (a menos que forçado).
+        if not forcar and any(p.name.startswith(f"{_PREFIXO}{hoje}") for p in pasta.glob(f"{_PREFIXO}*{_SUFIXO}")):
             _rotacionar(pasta, max_backups)
             return None
 
         carimbo = datetime.now().strftime("%Y%m%d-%H%M%S")
         destino = pasta / f"{_PREFIXO}{carimbo}{_SUFIXO}"
+        # Evita sobrescrever se já houver um no mesmo segundo (ex: backup diário
+        # + backup forçado pré-atualização disparados juntos).
+        n = 1
+        while destino.exists():
+            destino = pasta / f"{_PREFIXO}{carimbo}-{n}{_SUFIXO}"
+            n += 1
         shutil.copy2(origem, destino)
         _rotacionar(pasta, max_backups)
         return str(destino)

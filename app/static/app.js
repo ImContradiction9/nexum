@@ -282,7 +282,12 @@ function financeiro() {
       this._carregarOcultos();
       await this.carregarCatalogos();
       await this.carregarDashboard();
-      this.verificarAtualizacao();   // não-bloqueante
+      // Verifica e, se houver versão nova no app instalado, atualiza sozinho
+      // (o servidor faz backup do banco antes). Em dev (.py) nunca instala.
+      await this.verificarAtualizacao();
+      if (this.appUpdate.tem_atualizacao && this.appUpdate.instalado) {
+        this.instalarAtualizacao({ auto: true });
+      }
     },
 
     async verificarAtualizacao() {
@@ -292,18 +297,23 @@ function financeiro() {
       } catch (e) { /* offline / sem repo: silencioso */ }
     },
 
-    async instalarAtualizacao() {
+    async instalarAtualizacao(opts = {}) {
       if (!this.appUpdate.instalado) {
-        this.notificar('Auto-instalação só no app instalado (.exe).', 'erro');
+        if (!opts.auto) this.notificar('Auto-instalação só no app instalado (.exe).', 'erro');
         return;
       }
-      if (!confirm(`Atualizar para a versão ${this.appUpdate.versao_disponivel}?\n\n` +
-                   'O Nexum vai fechar, instalar a nova versão e reabrir sozinho.')) return;
+      // No modo automático (início do app) não pergunta nada — só avisa.
+      if (!opts.auto) {
+        if (!confirm(`Atualizar para a versão ${this.appUpdate.versao_disponivel}?\n\n` +
+                     'O Nexum vai fechar, instalar a nova versão e reabrir sozinho.')) return;
+      }
       this.instalandoUpdate = true;
+      this.updateDispensado = false;   // garante o banner visível durante a troca
       try {
         const r = await fetch('/api/atualizacao/instalar', { method: 'POST' });
         if (r.ok) {
-          this.notificar('Baixando e instalando… o Nexum vai reabrir em instantes.', 'ok');
+          this.notificar(`Atualizando para ${this.appUpdate.versao_disponivel}… ` +
+                         'backup do banco feito. O Nexum vai reabrir em instantes.', 'ok');
           // O servidor encerra logo após responder; a página vai cair — normal.
         } else {
           const d = await r.json().catch(() => ({}));

@@ -2,15 +2,17 @@
 import pytest
 from fastapi import HTTPException
 
-from app.routers.atualizacao import status, instalar, _repo, CONFIG_REPO
+from app.routers.atualizacao import status, instalar, _repo, CONFIG_REPO, REPO_PADRAO
 from app.database import Configuracao
 
 
-def test_repo_vazio_por_padrao(db):
-    assert _repo(db) == ""
+def test_repo_padrao_embutido(db):
+    # Sem env nem config, cai no repositório padrão (funciona "de fábrica").
+    assert _repo(db) == REPO_PADRAO
+    assert "/" in REPO_PADRAO
 
 
-def test_repo_da_config(db):
+def test_repo_da_config_sobrepoe_padrao(db):
     db.add(Configuracao(chave=CONFIG_REPO, valor="micael/nexum"))
     db.commit()
     assert _repo(db) == "micael/nexum"
@@ -23,8 +25,9 @@ def test_repo_env_tem_prioridade(db, monkeypatch):
     assert _repo(db) == "do/env"
 
 
-def test_status_sem_repo_nao_quebra(db):
-    # Sem repo configurado, status não bate na rede e sinaliza o motivo.
+def test_status_sem_repo_nao_quebra(db, monkeypatch):
+    # Anula o padrão e a config → sem repo, status não bate na rede.
+    monkeypatch.setattr("app.routers.atualizacao.REPO_PADRAO", "")
     r = status(db)
     assert r["tem_atualizacao"] is False
     assert r["erro"] == "repo_nao_configurado"

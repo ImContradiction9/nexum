@@ -25,6 +25,17 @@ def test_backup_nao_duplica_no_mesmo_dia(tmp_path):
     assert len(copias) == 1
 
 
+def test_backup_forcar_cria_mesmo_com_um_de_hoje(tmp_path):
+    # forcar=True (usado antes de atualizar o app) sempre cria, ignorando
+    # o limite de um por dia.
+    db = _criar_db(tmp_path / "financeiro.db")
+    assert backup.fazer_backup(db) is not None
+    assert backup.fazer_backup(db) is None              # dedup diário
+    assert backup.fazer_backup(db, forcar=True) is not None  # força mesmo assim
+    copias = list((tmp_path / "backups").glob("financeiro-*.db"))
+    assert len(copias) == 2
+
+
 def test_backup_db_inexistente_nao_quebra(tmp_path):
     assert backup.fazer_backup(str(tmp_path / "naoexiste.db")) is None
 
