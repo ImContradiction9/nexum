@@ -1,0 +1,63 @@
+name: Release
+
+# Dispara quando você empurra uma tag começando com "v" (ex: v1.0.2).
+# Fluxo de release pela nuvem:
+#   1) bump da versão em app/__init__.py
+#   2) git commit + git tag vX.Y.Z + git push --tags
+#   3) este workflow builda o exe + instalador (Windows runner + Inno Setup)
+#      e publica a release com o NexumSetup.exe anexado.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write   # necessário para criar releases
+
+jobs:
+  build-and-publish:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Se a release dessa tag JÁ foi publicada com o instalador (ex: pelo
+      # script local publicar.ps1), não rebuilda — evita asset duplicado.
+      - name: A release já tem o instalador?
+        id: check
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $names = ""
+          try { $names = gh release view $env:GITHUB_REF_NAME --json assets -q '.assets[].name' } catch {}
+          if ($names -match 'NexumSetup\.exe') {
+            "exists=true" >> $env:GITHUB_OUTPUT
+            Write-Host "Release ja tem NexumSetup.exe -> pulando build."
+          } else {
+            "exists=false" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Setup Python
+        if: steps.check.outputs.exists != 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+
+      - name: Instalar Inno Setup
+        if: steps.check.outputs.exists != 'true'
+        run: choco install innosetup --no-progress -y
+
+      - name: Build exe + instalador
+        if: steps.check.outputs.exists != 'true'
+        shell: pwsh
+        run: .\build_installer.ps1
+
+      - name: Publicar a release
+        if: steps.check.outputs.exists != 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ver = $env:GITHUB_REF_NAME -replace '^v',''
+          gh release create $env:GITHUB_REF_NAME "dist\NexumSetup.exe" `
+            --title "Nexum $ver" --generate-notes

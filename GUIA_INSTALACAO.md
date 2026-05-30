@@ -20,12 +20,36 @@ dados em `data/` na própria pasta.
   `winget install JRSoftware.InnoSetup`). A versão vem de `app/__init__.py`.
 
 **Publicar uma atualização (auto-update via GitHub Releases):**
+
+Há três formas — escolha uma. As duas primeiras são **automatizadas**.
+
+**A) GitHub Actions (nuvem — recomendado):** não precisa buildar nada local.
+```bash
+# 1. suba a versão em app/__init__.py (ex: 1.0.3), commit
+git tag v1.0.3
+git push origin master --tags
+```
+O workflow `.github/workflows/release.yml` builda o exe+instalador num runner
+Windows (instala o Inno Setup via choco) e publica a release com o
+`NexumSetup.exe` anexado. Requer só que o repositório esteja no GitHub.
+
+**B) Script local (`publicar.ps1`):** builda aqui e publica via GitHub CLI.
+```powershell
+# pré-requisito uma vez: winget install GitHub.cli ; gh auth login
+.\publicar.ps1 1.0.3      # bump + build + commit + tag + release num passo só
+```
+(O workflow detecta que a release já tem o instalador e não duplica.)
+
+**C) Manual:**
 1. Suba o número em `app/__init__.py` (`__version__ = "1.1.0"`).
 2. Rode `build_installer.ps1` para gerar o `dist\NexumSetup.exe`.
 3. No GitHub, crie uma **Release** com tag `v1.1.0` e anexe o `NexumSetup.exe`.
-4. Nos clientes, basta ter o repositório configurado em
-   **Configurações → Atualizações** (`usuario/repo`) — eles recebem o aviso e
-   atualizam com um clique. (Override por máquina: variável `NEXUM_UPDATE_REPO`.)
+
+Em qualquer caso, nos clientes basta ter o repositório configurado em
+**Configurações → Atualizações** (`usuario/repo`) — eles recebem o aviso e
+atualizam com um clique. (Override por máquina: variável `NEXUM_UPDATE_REPO`.)
+⚠️ O repositório precisa ser **público** (a API de releases que o app consulta
+não usa token; repo privado não é visível).
 
 O restante deste guia descreve a forma **manual** (rodar pelo código-fonte), útil
 no Mac ou para desenvolvimento.
