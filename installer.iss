@@ -44,14 +44,18 @@ RestartApplications=no
 Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
 
 [Tasks]
+; Ambos marcados por padrão. O do Menu Iniciar fica visível como opção (antes
+; era criado sempre, sem checkbox). Default checked = o usuário só desmarca se
+; não quiser.
+Name: "startmenuicon"; Description: "Criar atalho no Menu Iniciar (facilita a busca)"; GroupDescription: "{cm:AdditionalIcons}"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
 Source: "dist\Nexum.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-; Menu Iniciar (lista de aplicativos) + Área de Trabalho (opcional via task).
-Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
+; Menu Iniciar + Área de Trabalho, ambos opcionais via task (default checked).
+Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: startmenuicon
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
