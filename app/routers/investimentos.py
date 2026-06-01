@@ -123,11 +123,16 @@ def _rendimento_incorpora(a: Ativo) -> bool:
     return a.tipo in TIPOS_RENDA_FIXA
 
 
-def _serializar_ativo(a: Ativo, ops: list = None, cdi_serie: dict = None) -> dict:
+def _serializar_ativo(a: Ativo, ops: list = None, cdi_serie: dict = None,
+                      taxa_cambio_atual: float = None) -> dict:
     """Serializa um ativo com posição calculada a partir das operações.
 
     Se `cdi_serie` for fornecida e o ativo for renda fixa com `cdi_percentual`
-    (e sem saldo manual), o saldo é acumulado dia a dia pela série CDI."""
+    (e sem saldo manual), o saldo é acumulado dia a dia pela série CDI.
+
+    `taxa_cambio_atual` (moeda→BRL de hoje) converte a POSIÇÃO em reais; o
+    INVESTIDO em reais usa o câmbio da compra (custo). Se não informada, a
+    posição em R$ cai no câmbio da compra."""
     ops = ops or []
 
     incorpora = _rendimento_incorpora(a)
@@ -233,6 +238,26 @@ def _serializar_ativo(a: Ativo, ops: list = None, cdi_serie: dict = None) -> dic
     saldo_liquido = liq["saldo_liquido"]
     rentab_liquida_moeda = saldo_liquido - valor_investido_moeda
 
+    # --- Conversão para BRL (por ativo) e data de aquisição ---
+    # Investido em R$ = custo (câmbio da compra, já em valor_investido_brl).
+    # Posição em R$ = saldo atual × cotação de HOJE (taxa_cambio_atual); se não
+    # houver cotação atual, cai no câmbio do aporte mais recente.
+    datas_aporte = [op.data for op in ops if op.tipo in ("Compra", "Aporte") and op.data]
+    data_aquisicao = min(datas_aporte).isoformat() if datas_aporte else None
+    if a.moeda == "BRL":
+        cambio_atual = 1.0
+        saldo_atual_brl = saldo_atual
+    else:
+        cambio_compra = 1.0
+        for op in sorted(ops, key=lambda x: (x.data or date.min), reverse=True):
+            if op.cotacao_cambio:
+                cambio_compra = op.cotacao_cambio
+                break
+        cambio_atual = taxa_cambio_atual or cambio_compra
+        saldo_atual_brl = saldo_atual * cambio_atual
+    rentab_brl = saldo_atual_brl - valor_investido_brl
+    rentab_brl_pct = (rentab_brl / valor_investido_brl * 100) if valor_investido_brl > 0 else 0
+
     return {
         "id": a.id,
         "nome": a.nome,
@@ -246,6 +271,11 @@ def _serializar_ativo(a: Ativo, ops: list = None, cdi_serie: dict = None) -> dic
         "saldo_manual": bool(a.saldo_atual),
         "valor_investido_moeda": valor_investido_moeda,
         "valor_investido_brl": valor_investido_brl,
+        "saldo_atual_brl": saldo_atual_brl,
+        "rentab_brl": rentab_brl,
+        "rentab_brl_pct": rentab_brl_pct,
+        "cambio_atual": cambio_atual,
+        "data_aquisicao": data_aquisicao,
         "qtd_total": qtd_total,
         "rendimentos_recebidos": rendimentos_recebidos,
         "rentab_moeda": rentab_moeda,
@@ -333,7 +363,17 @@ def listar_ativos(incluir_inativos: bool = False, db: Session = Depends(get_db))
         por_ativo.setdefault(op.ativo_id, []).append(op)
 
     serie = _cdi_serie(db)
-    return [_serializar_ativo(a, por_ativo.get(a.id, []), serie) for a in ativos]
+    # Cotação atual das moedas estrangeiras (BCB/manual, lazy) para a posição em R$.
+    try:
+        cambio_mod.sincronizar(db)
+    except Exception:
+        pass
+    _taxas: dict = {}
+    def _taxa(moeda):
+        if moeda not in _taxas:
+            _taxas[moeda] = cambio_mod.taxa_atual(db, moeda)
+        return _taxas[moeda]
+    return [_serializar_ativo(a, por_ativo.get(a.id, []), serie, _taxa(a.moeda)) for a in ativos]
 
 
 @router.post("/api/investimentos/ativos")

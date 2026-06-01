@@ -252,6 +252,7 @@ function financeiro() {
     tiposAtivo: [],
     moedasAtivo: ['BRL', 'USD', 'EUR', 'GBP'],
     ativoExpandido: null,
+    ordemInvest: 'valor',   // valor | tipo | data | rentab | nome
     formAtivoAberto: false,
     editandoAtivoId: null,
     ativoForm: { nome: '', ticker: '', tipo: 'Tesouro Direto', moeda: 'BRL', instituicao: '', detalhes_taxa: '', data_vencimento: '', observacoes: '', rendimento_incorpora_saldo: null, cdi_percentual: '' },
@@ -2101,6 +2102,22 @@ function financeiro() {
     },
 
     // === Investimentos ===
+    ativosOrdenados() {
+      const arr = [...this.ativos];
+      const cmps = {
+        // Maior posição (em R$, comparável entre moedas)
+        valor:  (a, b) => (b.saldo_atual_brl || 0) - (a.saldo_atual_brl || 0),
+        // Maior rentabilidade (%)
+        rentab: (a, b) => (b.rentab_pct || 0) - (a.rentab_pct || 0),
+        // Aquisição mais recente primeiro
+        data:   (a, b) => (b.data_aquisicao || '').localeCompare(a.data_aquisicao || ''),
+        // Por tipo (alfabético), depois maior posição
+        tipo:   (a, b) => (a.tipo || '').localeCompare(b.tipo || '') || (b.saldo_atual_brl || 0) - (a.saldo_atual_brl || 0),
+        nome:   (a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR'),
+      };
+      return arr.sort(cmps[this.ordemInvest] || cmps.valor);
+    },
+
     async carregarInvestimentos() {
       const t = Date.now();
       try {

@@ -114,7 +114,7 @@ def sincronizar(db: Session, desde: date | None = None, forcar: bool = False) ->
     if inicio > hoje:
         # cache já está em dia
         _marcar_sincronizado(db)
-        db.commit()
+        _commit_tolerante(db)
         return {"ok": True, "atualizado": False, "ultima_data": _iso(ultima),
                 "dias_baixados": 0, "erro": None}
 
@@ -133,9 +133,26 @@ def sincronizar(db: Session, desde: date | None = None, forcar: bool = False) ->
         existentes.add(d)
         n += 1
     _marcar_sincronizado(db)
-    db.commit()
+    # Tolerante a corrida: se outro request concorrente já inseriu os mesmos
+    # dias (UNIQUE em cdi_diario), faz rollback em vez de deixar a sessão
+    # "envenenada" (PendingRollbackError quebrava a página de investimentos).
+    if not _commit_tolerante(db):
+        return {"ok": True, "atualizado": False, "ultima_data": _iso(_ultima_data_cache(db)),
+                "dias_baixados": 0, "erro": None}
     return {"ok": True, "atualizado": n > 0, "ultima_data": _iso(_ultima_data_cache(db)),
             "dias_baixados": n, "erro": None}
+
+
+def _commit_tolerante(db: Session) -> bool:
+    """Commit que não propaga conflito de concorrência. Em erro (ex.: UNIQUE de
+    outro request que inseriu antes), faz rollback e retorna False, deixando a
+    sessão limpa para as queries seguintes do mesmo request."""
+    try:
+        db.commit()
+        return True
+    except Exception:
+        db.rollback()
+        return False
 
 
 # --------------------------------------------------------------------------

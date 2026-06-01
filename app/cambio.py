@@ -112,7 +112,15 @@ def sincronizar(db: Session, forcar: bool = False) -> dict:
             atualizou = True
 
     _cfg_set(db, _CONFIG_SYNC, datetime.now().isoformat())
-    db.commit()
+    # Tolerante a corrida: a página de investimentos dispara /resumo e
+    # /cambio/status em paralelo (sessões separadas); os dois podem tentar
+    # inserir 'cambio_usd' ao mesmo tempo (UNIQUE em configuracoes). Em conflito,
+    # rollback em vez de envenenar a sessão (o outro request já gravou).
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        return {"ok": True, "atualizado": False, "erro": "conflito_concorrente"}
     return {"ok": erro is None, "atualizado": atualizou, "erro": erro}
 
 

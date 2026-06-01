@@ -1077,8 +1077,21 @@
       Nenhum ativo cadastrado ainda. Clique em <span class="text-amber-500">+ Novo ativo</span> pra começar.
     </div>
 
+    <!-- Ordenação -->
+    <div x-show="ativos.length > 1" class="flex items-center gap-2 mb-3 text-xs">
+      <span class="text-zinc-600 uppercase tracking-wider">Ordenar por</span>
+      <select x-model="ordemInvest"
+              class="bg-zinc-900 border border-zinc-800 rounded px-2 py-1 text-zinc-300">
+        <option value="valor">Maior posição (R$)</option>
+        <option value="rentab">Rentabilidade</option>
+        <option value="data">Data de aquisição</option>
+        <option value="tipo">Tipo</option>
+        <option value="nome">Nome</option>
+      </select>
+    </div>
+
     <div class="space-y-3">
-      <template x-for="a in ativos" :key="a.id">
+      <template x-for="a in ativosOrdenados()" :key="a.id">
         <div class="border border-zinc-800 rounded-lg overflow-hidden">
           <!-- Cabeçalho do ativo (clicável) -->
           <div class="px-5 py-4 hover:bg-zinc-900/40 cursor-pointer flex items-center gap-4"
@@ -1105,6 +1118,11 @@
             <div class="text-right whitespace-nowrap">
               <div class="text-xs uppercase text-zinc-500">Posição</div>
               <div class="font-mono text-zinc-200" x-text="(a.moeda !== 'BRL' ? a.moeda + ' ' : 'R$ ') + (a.saldo_atual || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})"></div>
+              <!-- Posição convertida em R$ pela cotação ATUAL (ativos em moeda estrangeira) -->
+              <div x-show="a.moeda !== 'BRL'" class="text-[11px] text-zinc-400 font-mono cursor-help"
+                   :title="'Convertido pela cotação atual: R$ ' + (a.cambio_atual||0).toFixed(4) + ' / ' + a.moeda">
+                ≈ R$ <span x-text="(a.saldo_atual_brl || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})"></span>
+              </div>
               <!-- Líquido estimado (IR + IOF) — só renda fixa com dedução -->
               <div x-show="a.eh_renda_fixa && a.saldo_liquido < a.saldo_atual - 0.005"
                    class="text-[11px] text-zinc-500 font-mono cursor-help"
@@ -1116,6 +1134,11 @@
             <div class="text-right whitespace-nowrap" x-show="a.valor_investido_moeda > 0">
               <div class="text-xs uppercase text-zinc-500">Investido</div>
               <div class="font-mono text-zinc-400 text-sm" x-text="(a.moeda !== 'BRL' ? a.moeda + ' ' : 'R$ ') + a.valor_investido_moeda.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})"></div>
+              <!-- Investido em R$ pelo câmbio da COMPRA (custo) -->
+              <div x-show="a.moeda !== 'BRL'" class="text-[11px] text-zinc-600 font-mono cursor-help"
+                   title="Custo em reais, pelo câmbio da compra">
+                ≈ R$ <span x-text="(a.valor_investido_brl || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})"></span>
+              </div>
             </div>
             <div class="text-right whitespace-nowrap" x-show="a.valor_investido_moeda > 0">
               <div class="text-xs uppercase text-zinc-500">Rentab.</div>
