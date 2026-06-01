@@ -1,15 +1,19 @@
 name: Release
 
-# Dispara quando você empurra uma tag começando com "v" (ex: v1.0.2).
-# Fluxo de release pela nuvem:
-#   1) bump da versão em app/__init__.py
-#   2) git commit + git tag vX.Y.Z + git push --tags
-#   3) este workflow builda o exe + instalador (Windows runner + Inno Setup)
-#      e publica a release com o NexumSetup.exe anexado.
+# ⚠️ PAUSADO (2026-06-01): o build na nuvem usa o Python 3.14 do
+# actions/setup-python, que gera um Nexum.exe cujo python314.dll NÃO carrega em
+# algumas máquinas ("Failed to load Python DLL ... LoadLibrary: módulo não
+# encontrado"). Builds LOCAIS (build_installer.ps1 / publicar.ps1) funcionam.
+# Enquanto não corrigirmos o runtime no CI, o disparo por tag fica DESLIGADO
+# para o auto-update nunca puxar uma versão quebrada. Releases = locais.
+#
+# Para reativar: voltar o gatilho `push: tags: ['v*']` abaixo (e validar que o
+# exe gerado abre numa máquina-alvo antes de confiar no auto-update).
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:   # só manual, pela aba Actions do GitHub
+  # push:
+  #   tags:
+  #     - 'v*'
 
 permissions:
   contents: write   # necessário para criar releases
