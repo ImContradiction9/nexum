@@ -255,7 +255,13 @@ def _serializar_ativo(a: Ativo, ops: list = None, cdi_serie: dict = None,
                 break
         cambio_atual = taxa_cambio_atual or cambio_compra
         saldo_atual_brl = saldo_atual * cambio_atual
-    rentab_brl = saldo_atual_brl - valor_investido_brl
+    # Rentabilidade em R$ (retorno total): ganho/perda de capital — já com a
+    # variação cambial — MAIS os dividendos/rendimentos recebidos (em R$). Em
+    # renda fixa os rendimentos já estão no saldo, então não soma de novo.
+    if incorpora:
+        rentab_brl = saldo_atual_brl - valor_investido_brl
+    else:
+        rentab_brl = saldo_atual_brl - valor_investido_brl + rendimentos_brl
     rentab_brl_pct = (rentab_brl / valor_investido_brl * 100) if valor_investido_brl > 0 else 0
 
     return {
@@ -278,6 +284,7 @@ def _serializar_ativo(a: Ativo, ops: list = None, cdi_serie: dict = None,
         "data_aquisicao": data_aquisicao,
         "qtd_total": qtd_total,
         "rendimentos_recebidos": rendimentos_recebidos,
+        "rendimentos_brl": rendimentos_brl,
         "rentab_moeda": rentab_moeda,
         "rentab_pct": rentab_pct,
         "data_vencimento": a.data_vencimento.isoformat() if a.data_vencimento else None,
@@ -568,53 +575,46 @@ def resumo_investimentos(db: Session = Depends(get_db)):
 
     total_investido_brl = 0
     total_atual_brl = 0
+    total_rentab_brl = 0       # retorno TOTAL em R$ (capital + câmbio + dividendos)
+    total_rendimentos_brl = 0  # só os proventos, p/ exibir "inclui R$ X em proventos"
     por_tipo = {}
 
     serie = _cdi_serie(db)
-    # Cotação ATUAL das moedas estrangeiras (BCB/manual, lazy). Assim o "valor
-    # atual" em R$ reflete o dólar de hoje, não o da compra.
+    # Cotação ATUAL das moedas estrangeiras (BCB/manual, lazy). Assim a posição
+    # em R$ reflete o dólar de hoje, não o da compra.
     try:
         cambio_mod.sincronizar(db)
     except Exception:
         pass
+    _taxas: dict = {}
+    def _taxa(moeda):
+        if moeda not in _taxas:
+            _taxas[moeda] = cambio_mod.taxa_atual(db, moeda)
+        return _taxas[moeda]
+
     for a in ativos:
-        ser = _serializar_ativo(a, por_ativo.get(a.id, []), serie)
-        ops = por_ativo.get(a.id, [])
+        ser = _serializar_ativo(a, por_ativo.get(a.id, []), serie, _taxa(a.moeda))
 
-        # Câmbio da compra (custo) — usado no "investido" e como fallback.
-        cambio_compra = 1
-        if a.moeda != "BRL" and ops:
-            for op in sorted(ops, key=lambda x: x.data, reverse=True):
-                if op.cotacao_cambio:
-                    cambio_compra = op.cotacao_cambio
-                    break
+        # Posições fechadas (resgatadas) podem ter investido negativo → 0 na
+        # carteira. A rentabilidade usa o retorno do próprio ativo (já em R$,
+        # já com câmbio e dividendos).
+        invest_brl = max(ser["valor_investido_brl"], 0)
+        atual_brl = max(ser["saldo_atual_brl"], 0)
+        rentab_ativo_brl = ser["rentab_brl"]
 
-        invest_brl = ser["valor_investido_brl"]
-        if a.moeda != "BRL":
-            # Valor atual converte pela cotação de HOJE (cai no câmbio da compra
-            # se o BCB/manual não tiver taxa pra essa moeda).
-            taxa_hoje = cambio_mod.taxa_atual(db, a.moeda) or cambio_compra
-            atual_brl = ser["saldo_atual"] * taxa_hoje
-        else:
-            atual_brl = ser["saldo_atual"]
-
-        # Posições fechadas (totalmente resgatadas) podem ter valor_investido
-        # negativo — significa que o usuário sacou mais do que aportou nominal,
-        # graças aos juros. Pra somar na carteira isso vira zero (a posição
-        # não está mais "investida"), e o lucro realizado não é refletido aqui.
-        invest_brl_carteira = max(invest_brl, 0)
-        atual_brl_carteira = max(atual_brl, 0)
-
-        total_investido_brl += invest_brl_carteira
-        total_atual_brl += atual_brl_carteira
+        total_investido_brl += invest_brl
+        total_atual_brl += atual_brl
+        total_rentab_brl += rentab_ativo_brl
+        total_rendimentos_brl += ser["rendimentos_brl"]
 
         if ser["tipo"] not in por_tipo:
-            por_tipo[ser["tipo"]] = {"investido_brl": 0, "atual_brl": 0, "n": 0}
-        por_tipo[ser["tipo"]]["investido_brl"] += invest_brl_carteira
-        por_tipo[ser["tipo"]]["atual_brl"] += atual_brl_carteira
+            por_tipo[ser["tipo"]] = {"investido_brl": 0, "atual_brl": 0, "rentab_brl": 0, "n": 0}
+        por_tipo[ser["tipo"]]["investido_brl"] += invest_brl
+        por_tipo[ser["tipo"]]["atual_brl"] += atual_brl
+        por_tipo[ser["tipo"]]["rentab_brl"] += rentab_ativo_brl
         por_tipo[ser["tipo"]]["n"] += 1
 
-    rentab_brl = total_atual_brl - total_investido_brl
+    rentab_brl = total_rentab_brl
     rentab_pct = (rentab_brl / total_investido_brl * 100) if total_investido_brl > 0 else 0
 
     return {
@@ -622,6 +622,7 @@ def resumo_investimentos(db: Session = Depends(get_db)):
         "total_atual_brl": total_atual_brl,
         "rentab_brl": rentab_brl,
         "rentab_pct": rentab_pct,
+        "rendimentos_brl": total_rendimentos_brl,
         "por_tipo": [
             {"tipo": k, **v} for k, v in sorted(por_tipo.items(), key=lambda x: -x[1]["atual_brl"])
         ],
