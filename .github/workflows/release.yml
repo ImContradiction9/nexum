@@ -1,22 +1,26 @@
 name: Release
 
-# ⚠️ PAUSADO (2026-06-01): o build na nuvem usa o Python 3.14 do
-# actions/setup-python, que gera um Nexum.exe cujo python314.dll NÃO carrega em
-# algumas máquinas ("Failed to load Python DLL ... LoadLibrary: módulo não
-# encontrado"). Builds LOCAIS (build_installer.ps1 / publicar.ps1) funcionam.
-# Enquanto não corrigirmos o runtime no CI, o disparo por tag fica DESLIGADO
-# para o auto-update nunca puxar uma versão quebrada. Releases = locais.
+# Build e publicação do instalador do Nexum.
 #
-# Para reativar: voltar o gatilho `push: tags: ['v*']` abaixo (e validar que o
-# exe gerado abre numa máquina-alvo antes de confiar no auto-update).
+# Causa do bug anterior: o actions/setup-python usa um build de Python próprio
+# do GitHub cujo python3XX.dll não carregava em algumas máquinas
+# ("Failed to load Python DLL"). Aqui instalamos o Python OFICIAL do python.org
+# (idêntico ao build local que funciona) — assim o exe gerado é equivalente.
+#
+# Gatilhos:
+#   - tag vX.Y.Z   -> release REAL (full). Ex: v1.0.5
+#   - tag vtest-*  -> build de TESTE, publicada como PRERELEASE (o auto-update
+#                     usa releases/latest, que ignora prerelease -> seguro testar)
+#   - manual (workflow_dispatch) pela aba Actions
 on:
-  workflow_dispatch:   # só manual, pela aba Actions do GitHub
-  # push:
-  #   tags:
-  #     - 'v*'
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'vtest-*'
 
 permissions:
-  contents: write   # necessário para criar releases
+  contents: write
 
 jobs:
   build-and-publish:
@@ -24,49 +28,34 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Se a release dessa tag JÁ foi publicada com o instalador (ex: pelo
-      # script local publicar.ps1), não rebuilda — evita asset duplicado.
-      - name: A release já tem o instalador?
-        id: check
+      - name: Instalar Python 3.14.4 (python.org, igual ao build local)
         shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
-          $names = ""
-          try { $names = gh release view $env:GITHUB_REF_NAME --json assets -q '.assets[].name' 2>$null } catch {}
-          # gh sai com codigo 1 quando a release ainda nao existe — isso e
-          # esperado (vamos buildar). Zera o codigo pra nao derrubar o passo.
-          $global:LASTEXITCODE = 0
-          if ($names -match 'NexumSetup\.exe') {
-            "exists=true" >> $env:GITHUB_OUTPUT
-            Write-Host "Release ja tem NexumSetup.exe -> pulando build."
-          } else {
-            "exists=false" >> $env:GITHUB_OUTPUT
-            Write-Host "Release ainda nao tem o instalador -> vai buildar."
-          }
-          exit 0
+          $url = "https://www.python.org/ftp/python/3.14.4/python-3.14.4-amd64.exe"
+          Invoke-WebRequest $url -OutFile "$env:RUNNER_TEMP\py.exe"
+          Start-Process -Wait -FilePath "$env:RUNNER_TEMP\py.exe" -ArgumentList "/quiet","InstallAllUsers=1","PrependPath=1","Include_pip=1","Include_test=0"
+          "C:\Program Files\Python314"         | Out-File $env:GITHUB_PATH -Append -Encoding ascii
+          "C:\Program Files\Python314\Scripts" | Out-File $env:GITHUB_PATH -Append -Encoding ascii
 
-      - name: Setup Python
-        if: steps.check.outputs.exists != 'true'
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.14'
+      - name: Conferir Python
+        shell: pwsh
+        run: python --version
 
       - name: Instalar Inno Setup
-        if: steps.check.outputs.exists != 'true'
         run: choco install innosetup --no-progress -y
 
       - name: Build exe + instalador
-        if: steps.check.outputs.exists != 'true'
         shell: pwsh
         run: .\build_installer.ps1
 
       - name: Publicar a release
-        if: steps.check.outputs.exists != 'true'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $ver = $env:GITHUB_REF_NAME -replace '^v',''
-          gh release create $env:GITHUB_REF_NAME "dist\NexumSetup.exe" `
-            --title "Nexum $ver" --generate-notes
+          $ver = (Select-String -Path app/__init__.py -Pattern '__version__\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
+          $isTest = $env:GITHUB_REF_NAME -like 'vtest-*'
+          $title  = if ($isTest) { "TESTE $($env:GITHUB_REF_NAME) (Nexum $ver)" } else { "Nexum $ver" }
+          $ghArgs = @($env:GITHUB_REF_NAME, "dist\NexumSetup.exe", "--title", $title, "--generate-notes")
+          if ($isTest) { $ghArgs += "--prerelease" }
+          gh release create @ghArgs
