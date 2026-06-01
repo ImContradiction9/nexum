@@ -12,12 +12,14 @@ name: Release
 #   - tag vtest-*  -> build de TESTE, publicada como PRERELEASE (o auto-update
 #                     usa releases/latest, que ignora prerelease -> seguro testar)
 #   - manual (workflow_dispatch) pela aba Actions
+# Gatilho por TAG desligado: o runner windows-latest passou a vir com um
+# Python 3.14 que faz o instalador do python.org falhar (erro MSI 1603), então
+# o build na nuvem não consegue mais usar o Python certo e SEMPRE falharia.
+# Releases agora são feitas LOCALMENTE (build na máquina + `gh release create`,
+# via publicar.ps1). Este workflow fica só como disparo MANUAL (a guarda de
+# versão continua impedindo publicar um exe quebrado, se algum dia voltar a rodar).
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+'
-      - 'vtest-*'
 
 permissions:
   contents: write
