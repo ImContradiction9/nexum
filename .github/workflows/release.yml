@@ -28,26 +28,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Instalar Python 3.14.4 (python.org) e TRAVAR a versão
+      - name: Instalar Python 3.14 (python.org via choco) e TRAVAR a versão
         shell: pwsh
         run: |
-          $url = "https://www.python.org/ftp/python/3.14.4/python-3.14.4-amd64.exe"
-          Invoke-WebRequest $url -OutFile "$env:RUNNER_TEMP\py.exe"
-          $p = Start-Process -Wait -PassThru -FilePath "$env:RUNNER_TEMP\py.exe" `
-                 -ArgumentList "/quiet","InstallAllUsers=1","PrependPath=1","Include_pip=1","Include_test=0"
-          Write-Host "Installer exit: $($p.ExitCode)"
-          # Localiza o python.exe instalado (all-users OU per-user) — não confia no PATH,
-          # que na v1.0.6 caiu pro Python 3.12 do runner e gerou um exe quebrado.
+          # O instalador .exe do python.org dava erro 1603 no runner (flaky).
+          # O choco instala o MESMO Python oficial de forma confiável (em C:\Python314).
+          choco install python --version=3.14.4 -y --no-progress
+          # Localiza o python.exe (não confia no PATH — na v1.0.6 caiu pro 3.12 do runner).
           $cands = @(
+            "C:\Python314\python.exe",
             "C:\Program Files\Python314\python.exe",
             "$env:LOCALAPPDATA\Programs\Python\Python314\python.exe"
           )
           $py = $cands | Where-Object { Test-Path $_ } | Select-Object -First 1
-          if (-not $py) { Write-Error "python.org 3.14 nao encontrado apos instalar"; exit 1 }
+          if (-not $py) { Write-Error "Python 3.14 nao encontrado apos o choco"; exit 1 }
           $ver = (& $py --version) 2>&1 | Out-String
           Write-Host "Build Python: $py -> $($ver.Trim())"
-          # GUARDA: só 3.14 produz exe que carrega nas máquinas. Senão, FALHA o
-          # build (melhor falhar do que publicar versão quebrada que se auto-instala).
+          # GUARDA: só 3.14 produz exe que carrega nas máquinas. Senão FALHA o build
+          # (melhor falhar do que publicar versão quebrada que se auto-instala).
           if ($ver -notmatch '3\.14') { Write-Error "Esperado Python 3.14, veio: $ver"; exit 1 }
           "NEXUM_PYTHON=$py" | Out-File $env:GITHUB_ENV -Append -Encoding ascii
 
