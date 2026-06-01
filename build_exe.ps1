@@ -6,16 +6,23 @@
 
 $ErrorActionPreference = "Stop"
 
+# Python a usar. No CI definimos NEXUM_PYTHON com o caminho do python.org 3.14
+# (o exe gerado por OUTROS builds de Python não carrega em algumas máquinas).
+# Localmente, cai no 'python' do PATH.
+$py = if ($env:NEXUM_PYTHON) { $env:NEXUM_PYTHON } else { "python" }
+Write-Host "==> Python do build: $py" -ForegroundColor Cyan
+& $py --version
+
 Write-Host "==> Instalando dependencias de runtime + build..." -ForegroundColor Cyan
-python -m pip install -r requirements.txt
-python -m pip install pyinstaller
+& $py -m pip install -r requirements.txt
+& $py -m pip install pyinstaller
 
 Write-Host "==> Limpando builds anteriores..." -ForegroundColor Cyan
 if (Test-Path build) { Remove-Item -Recurse -Force build }
 if (Test-Path dist)  { Remove-Item -Recurse -Force dist }
 
 Write-Host "==> Empacotando com PyInstaller (pode levar alguns minutos)..." -ForegroundColor Cyan
-python -m PyInstaller --clean --noconfirm Nexum.spec
+& $py -m PyInstaller --clean --noconfirm Nexum.spec
 
 if (Test-Path dist\Nexum.exe) {
     $tam = [math]::Round((Get-Item dist\Nexum.exe).Length / 1MB, 1)
