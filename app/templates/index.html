@@ -1239,6 +1239,13 @@
                          class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full">
                 </div>
               </div>
+              <!-- Resgate total: encerra o título (saldo → 0). O valor é o líquido recebido. -->
+              <label x-show="opForm.tipo === 'Resgate' || opForm.tipo === 'Venda'"
+                     class="flex items-center gap-2 text-xs text-zinc-400 mb-3 cursor-pointer">
+                <input type="checkbox" x-model="opForm.resgate_total" class="accent-amber-500">
+                Resgatei <strong class="text-zinc-200">tudo</strong> — encerrar o título
+                <span class="text-zinc-600">(o valor acima é o líquido recebido; o app zera o saldo e trata o resíduo bruto como IR/IOF)</span>
+              </label>
               <div class="flex justify-end gap-2">
                 <button @click.stop="formOpAtivoId=null"
                         class="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200">Cancelar</button>

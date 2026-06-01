@@ -315,6 +315,9 @@ class OperacaoInvestimento(Base):
     cotacao_cambio = Column(Float)                     # 1 unidade da moeda_operacao em BRL no dia da operação
 
     taxas = Column(Float, default=0)                   # corretagem, IOF, etc. (na moeda da operação)
+    # Resgate/Venda que ENCERROU o título: o valor_total é o líquido recebido e o
+    # app zera o saldo (o resíduo bruto = IR/IOF retido vira custo realizado).
+    resgate_total = Column(Boolean, default=False)
     observacoes = Column(Text)
     criado_em = Column(DateTime, default=datetime.utcnow)
 
@@ -441,6 +444,8 @@ def _aplicar_migracoes(engine):
     add_column_if_missing("metas", "taxa_retorno_anual", "FLOAT")
     # v1.14 — escopo de meta por ativos específicos (JSON list de ids)
     add_column_if_missing("metas", "escopo_ativos", "TEXT")
+
+    add_column_if_missing("operacoes_investimento", "resgate_total", "BOOLEAN DEFAULT 0")
     _autofill_cdi_percentual(engine)
     # v1.7 — remove unique constraint do nome da conta (permite múltiplas com mesmo nome)
     _drop_unique_index_se_existir(engine, "contas", "nome")

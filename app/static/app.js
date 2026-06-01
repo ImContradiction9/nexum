@@ -260,7 +260,7 @@ function financeiro() {
     // Tipos que por default incorporam rendimento ao saldo (renda fixa).
     TIPOS_RF: ['Tesouro Direto','CDB','RDB','LCI','LCA','Fundo DI'],
     formOpAtivoId: null,
-    opForm: { tipo: 'Compra', data: '', quantidade: '', preco_unitario: '', valor_total: '', moeda_operacao: 'BRL', cotacao_cambio: '', taxas: '', observacoes: '' },
+    opForm: { tipo: 'Compra', data: '', quantidade: '', preco_unitario: '', valor_total: '', moeda_operacao: 'BRL', cotacao_cambio: '', taxas: '', resgate_total: false, observacoes: '' },
 
     // Modais de senha
     modalSenha: { show: false, filename: '', senha: '', file: null },
@@ -2491,6 +2491,7 @@ function financeiro() {
         moeda_operacao: ativo.moeda,
         cotacao_cambio: '',
         taxas: '',
+        resgate_total: false,
         observacoes: '',
       };
       this.formOpAtivoId = ativo.id;
@@ -2523,6 +2524,7 @@ function financeiro() {
         moeda_operacao: f.moeda_operacao,
         cotacao_cambio: f.cotacao_cambio ? parseFloat(f.cotacao_cambio) : null,
         taxas: f.taxas ? parseFloat(f.taxas) : 0,
+        resgate_total: !!f.resgate_total,
         observacoes: f.observacoes,
       };
       const r = await fetch('/api/investimentos/operacoes', {

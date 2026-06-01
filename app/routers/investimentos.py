@@ -194,6 +194,20 @@ def _serializar_ativo(a: Ativo, ops: list = None, cdi_serie: dict = None,
         cdi_auto = True
     else:
         saldo_atual = saldo_calculado
+
+    # Título ENCERRADO: se houve um resgate marcado como "total" e nenhum aporte
+    # depois dele, o saldo é 0. O usuário registrou o líquido recebido; o resíduo
+    # bruto (IR/IOF retido pelo banco) vira custo realizado, não fica sobrando.
+    if not a.saldo_atual:
+        resg_totais = [op for op in ops if op.tipo in ("Resgate", "Venda")
+                       and getattr(op, "resgate_total", False) and op.data]
+        if resg_totais:
+            ult_resg_total = max(op.data for op in resg_totais)
+            aportes_datas = [op.data for op in ops if op.tipo in ("Compra", "Aporte") and op.data]
+            if not aportes_datas or max(aportes_datas) <= ult_resg_total:
+                saldo_atual = 0.0
+                cdi_auto = False
+
     # Limpa -0.00 e arredonda micro-resíduos de ponto flutuante.
     saldo_atual = round(saldo_atual, 8)
     if abs(saldo_atual) < 0.005:
@@ -505,6 +519,7 @@ def listar_operacoes(ativo_id: Optional[int] = None, db: Session = Depends(get_d
         "moeda_operacao": op.moeda_operacao,
         "cotacao_cambio": op.cotacao_cambio,
         "taxas": op.taxas,
+        "resgate_total": bool(op.resgate_total),
         "valor_total_brl": op.valor_total * (op.cotacao_cambio or 1),
         "observacoes": op.observacoes,
     } for op in ops]
@@ -547,6 +562,7 @@ def criar_operacao(dados: dict, db: Session = Depends(get_db)):
         moeda_operacao=dados.get("moeda_operacao", a.moeda),
         cotacao_cambio=float(dados["cotacao_cambio"]) if dados.get("cotacao_cambio") else None,
         taxas=float(dados.get("taxas", 0)) or 0,
+        resgate_total=(bool(dados.get("resgate_total")) if tipo in ("Resgate", "Venda") else False),
         observacoes=(dados.get("observacoes") or "").strip() or None,
     )
     db.add(op)
