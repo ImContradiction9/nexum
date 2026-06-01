@@ -17,15 +17,20 @@ os.environ["FINANCEIRO_DB"] = os.path.join(tempfile.gettempdir(), "nexum_test_im
 import pytest
 
 from app import cdi as cdi_mod
+from app import cambio as cambio_mod
 from app.database import init_db, get_session
 
 
 @pytest.fixture(autouse=True)
 def _sem_rede_cdi(monkeypatch):
-    """Nenhum teste deve bater na API do Banco Central."""
+    """Nenhum teste deve bater na API do Banco Central (CDI nem câmbio)."""
     monkeypatch.setattr(
         cdi_mod, "sincronizar",
         lambda *a, **k: {"ok": True, "atualizado": False, "dias_baixados": 0, "erro": None},
+    )
+    monkeypatch.setattr(
+        cambio_mod, "sincronizar",
+        lambda *a, **k: {"ok": True, "atualizado": False, "erro": None},
     )
 
 

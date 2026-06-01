@@ -15,6 +15,7 @@ from ..deps import get_db
 from ..database import Ativo, OperacaoInvestimento, CDIDiario, Configuracao
 from .. import cdi as cdi_mod
 from .. import impostos
+from .. import cambio as cambio_mod
 
 router = APIRouter()
 
@@ -530,20 +531,32 @@ def resumo_investimentos(db: Session = Depends(get_db)):
     por_tipo = {}
 
     serie = _cdi_serie(db)
+    # Cotação ATUAL das moedas estrangeiras (BCB/manual, lazy). Assim o "valor
+    # atual" em R$ reflete o dólar de hoje, não o da compra.
+    try:
+        cambio_mod.sincronizar(db)
+    except Exception:
+        pass
     for a in ativos:
         ser = _serializar_ativo(a, por_ativo.get(a.id, []), serie)
-        # Pra resumo, converte saldo atual usando o último câmbio das operações
         ops = por_ativo.get(a.id, [])
-        ultimo_cambio = 1
+
+        # Câmbio da compra (custo) — usado no "investido" e como fallback.
+        cambio_compra = 1
         if a.moeda != "BRL" and ops:
-            # Pega a cotação mais recente registrada
             for op in sorted(ops, key=lambda x: x.data, reverse=True):
                 if op.cotacao_cambio:
-                    ultimo_cambio = op.cotacao_cambio
+                    cambio_compra = op.cotacao_cambio
                     break
 
         invest_brl = ser["valor_investido_brl"]
-        atual_brl = ser["saldo_atual"] * ultimo_cambio if a.moeda != "BRL" else ser["saldo_atual"]
+        if a.moeda != "BRL":
+            # Valor atual converte pela cotação de HOJE (cai no câmbio da compra
+            # se o BCB/manual não tiver taxa pra essa moeda).
+            taxa_hoje = cambio_mod.taxa_atual(db, a.moeda) or cambio_compra
+            atual_brl = ser["saldo_atual"] * taxa_hoje
+        else:
+            atual_brl = ser["saldo_atual"]
 
         # Posições fechadas (totalmente resgatadas) podem ter valor_investido
         # negativo — significa que o usuário sacou mais do que aportou nominal,
