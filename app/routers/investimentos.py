@@ -306,6 +306,7 @@ def _serializar_ativo(a: Ativo, ops: list = None, cdi_serie: dict = None,
         "nome": a.nome,
         "ticker": a.ticker,
         "tipo": a.tipo,
+        "objetivo": a.objetivo or "patrimonio",
         "moeda": a.moeda,
         "instituicao": a.instituicao,
         "detalhes_taxa": a.detalhes_taxa,
@@ -463,6 +464,7 @@ def criar_ativo(dados: dict, db: Session = Depends(get_db)):
             else None
         ),
         cdi_percentual=_parse_float_ou_none(dados.get("cdi_percentual")),
+        objetivo=("aquisicao" if dados.get("objetivo") == "aquisicao" else "patrimonio"),
     )
     db.add(a)
     db.commit()
@@ -491,6 +493,8 @@ def atualizar_ativo(ativo_id: int, dados: dict, db: Session = Depends(get_db)):
 
     if "cdi_percentual" in dados:
         a.cdi_percentual = _parse_float_ou_none(dados["cdi_percentual"])
+    if "objetivo" in dados:
+        a.objetivo = "aquisicao" if dados["objetivo"] == "aquisicao" else "patrimonio"
 
     # Atualização manual de saldo
     if "saldo_atual" in dados:
@@ -639,6 +643,7 @@ def resumo_investimentos(db: Session = Depends(get_db)):
     total_atual_brl = 0
     total_rentab_brl = 0       # retorno TOTAL em R$ (capital + câmbio + dividendos)
     total_rendimentos_brl = 0  # só os proventos, p/ exibir "inclui R$ X em proventos"
+    total_patrimonio_brl = 0   # só ativos objetivo="patrimonio" (p/ o gráfico)
     por_tipo = {}
 
     serie = _cdi_serie(db)
@@ -669,6 +674,8 @@ def resumo_investimentos(db: Session = Depends(get_db)):
         total_atual_brl += atual_brl
         total_rentab_brl += rentab_ativo_brl
         total_rendimentos_brl += ser["rendimentos_brl"]
+        if (a.objetivo or "patrimonio") == "patrimonio":
+            total_patrimonio_brl += atual_brl
 
         if ser["tipo"] not in por_tipo:
             por_tipo[ser["tipo"]] = {"investido_brl": 0, "atual_brl": 0, "rentab_brl": 0, "n": 0}
@@ -681,7 +688,7 @@ def resumo_investimentos(db: Session = Depends(get_db)):
     rentab_pct = (rentab_brl / total_investido_brl * 100) if total_investido_brl > 0 else 0
 
     # Foto de hoje pro gráfico de evolução (upsert por dia, best-effort).
-    _registrar_snapshot(db, total_atual_brl, total_investido_brl)
+    _registrar_snapshot(db, total_atual_brl, total_investido_brl, total_patrimonio_brl)
 
     return {
         "total_investido_brl": total_investido_brl,
@@ -696,17 +703,20 @@ def resumo_investimentos(db: Session = Depends(get_db)):
     }
 
 
-def _registrar_snapshot(db: Session, total_brl: float, investido_brl: float):
+def _registrar_snapshot(db: Session, total_brl: float, investido_brl: float,
+                        patrimonio_brl: float = None):
     """Upsert da foto de patrimônio de HOJE (best-effort, tolerante a corrida)."""
     try:
         hoje = date.today()
+        pat = round(patrimonio_brl, 2) if patrimonio_brl is not None else None
         snap = db.query(PatrimonioSnapshot).filter(PatrimonioSnapshot.data == hoje).first()
         if snap:
             snap.total_brl = round(total_brl, 2)
             snap.investido_brl = round(investido_brl, 2)
+            snap.patrimonio_brl = pat
         else:
             db.add(PatrimonioSnapshot(data=hoje, total_brl=round(total_brl, 2),
-                                      investido_brl=round(investido_brl, 2)))
+                                      investido_brl=round(investido_brl, 2), patrimonio_brl=pat))
         db.commit()
     except Exception:
         db.rollback()
@@ -791,11 +801,17 @@ def salvar_alocacao_alvo(dados: dict, db: Session = Depends(get_db)):
 def evolucao_patrimonio(db: Session = Depends(get_db)):
     """Série mensal: 'investido' (custo acumulado, reconstruído das operações,
     histórico completo) + 'patrimonio' (snapshots; preenche de quando começou a
-    gravar). Base do gráfico de evolução da carteira."""
+    gravar). Só considera ativos com objetivo='patrimonio' (exclui reservas de
+    aquisição de bens, ex: carro/casa)."""
+    # Objetivo por ativo: só 'patrimonio' entra no gráfico.
+    objetivo_por_ativo = {a.id: (a.objetivo or "patrimonio")
+                          for a in db.query(Ativo.id, Ativo.objetivo).all()}
     ops = db.query(OperacaoInvestimento).order_by(OperacaoInvestimento.data).all()
     delta_mes = {}
     for op in ops:
         if not op.data:
+            continue
+        if objetivo_por_ativo.get(op.ativo_id, "patrimonio") != "patrimonio":
             continue
         if op.tipo in ("Compra", "Aporte"):
             sinal = 1
@@ -808,7 +824,9 @@ def evolucao_patrimonio(db: Session = Depends(get_db)):
         delta_mes[mes] = delta_mes.get(mes, 0.0) + sinal * v
 
     snaps = db.query(PatrimonioSnapshot).order_by(PatrimonioSnapshot.data).all()
-    patr_mes = {s.data.strftime("%Y-%m"): s.total_brl for s in snaps}
+    # patrimonio_brl (objetivo=patrimonio); snapshots antigos sem a coluna caem no total_brl.
+    patr_mes = {s.data.strftime("%Y-%m"): (s.patrimonio_brl if s.patrimonio_brl is not None else s.total_brl)
+                for s in snaps}
 
     if not delta_mes and not patr_mes:
         return {"serie": []}

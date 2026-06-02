@@ -287,6 +287,11 @@ class Ativo(Base):
     # None = sem auto-cálculo (comportamento antigo).
     cdi_percentual = Column(Float)
 
+    # Objetivo do investimento: "patrimonio" (riqueza de longo prazo) ou
+    # "aquisicao" (reservado pra comprar um bem: carro, casa…). O gráfico de
+    # patrimônio e metas de patrimônio total só contam objetivo="patrimonio".
+    objetivo = Column(String, default="patrimonio")
+
 
 class OperacaoInvestimento(Base):
     """
@@ -340,8 +345,9 @@ class PatrimonioSnapshot(Base):
     evolução ao longo do tempo. Gravado (upsert por dia) ao abrir a carteira."""
     __tablename__ = "patrimonio_snapshot"
     data = Column(Date, primary_key=True)
-    total_brl = Column(Float, nullable=False)       # posição atual em BRL
+    total_brl = Column(Float, nullable=False)       # posição atual em BRL (carteira toda)
     investido_brl = Column(Float, nullable=False)   # custo investido em BRL
+    patrimonio_brl = Column(Float)                  # só ativos objetivo="patrimonio" (p/ o gráfico)
 
 
 # ============================================================
@@ -373,6 +379,7 @@ class Meta(Base):
     escopo_tipos = Column(Text)                        # JSON list de tipos (quando escopo=tipos_ativo)
     escopo_ativos = Column(Text)                       # JSON list de ids de ativo (quando escopo=ativos)
     escopo_excluir_ativos = Column(Text)               # JSON list de ids de ativo a IGNORAR (patrimonio_total/tipos_ativo)
+    objetivo = Column(String, default="patrimonio")    # "patrimonio" | "aquisicao" (categoria da meta)
     valor_atual_manual = Column(Float, default=0)      # só quando escopo=manual
 
     valor_alvo = Column(Float, nullable=False)         # em BRL
@@ -457,6 +464,11 @@ def _aplicar_migracoes(engine):
 
     # ativos a IGNORAR numa meta (ex: reservas pra carro/casa fora do "future proof")
     add_column_if_missing("metas", "escopo_excluir_ativos", "TEXT")
+
+    # objetivo: patrimonio vs aquisicao de bens (ativo e meta) + snapshot só de patrimônio
+    add_column_if_missing("ativos", "objetivo", "VARCHAR DEFAULT 'patrimonio'")
+    add_column_if_missing("metas", "objetivo", "VARCHAR DEFAULT 'patrimonio'")
+    add_column_if_missing("patrimonio_snapshot", "patrimonio_brl", "FLOAT")
 
     add_column_if_missing("operacoes_investimento", "resgate_total", "BOOLEAN DEFAULT 0")
     _autofill_cdi_percentual(engine)

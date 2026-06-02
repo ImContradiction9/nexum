@@ -263,7 +263,7 @@ function financeiro() {
     ordemInvest: 'valor',   // valor | tipo | data | rentab | nome
     formAtivoAberto: false,
     editandoAtivoId: null,
-    ativoForm: { nome: '', ticker: '', tipo: 'Tesouro Direto', moeda: 'BRL', instituicao: '', detalhes_taxa: '', data_vencimento: '', observacoes: '', rendimento_incorpora_saldo: null, cdi_percentual: '' },
+    ativoForm: { nome: '', ticker: '', tipo: 'Tesouro Direto', moeda: 'BRL', instituicao: '', detalhes_taxa: '', data_vencimento: '', observacoes: '', rendimento_incorpora_saldo: null, cdi_percentual: '', objetivo: 'patrimonio' },
 
     // Tipos que por default incorporam rendimento ao saldo (renda fixa).
     TIPOS_RF: ['Tesouro Direto','CDB','RDB','LCI','LCA','Fundo DI'],
@@ -2378,6 +2378,7 @@ function financeiro() {
         nome: '',
         descricao: '',
         escopo: 'patrimonio_total',
+        objetivo: 'patrimonio',
         escopo_tipos: [],
         escopo_ativos: [],
         escopo_excluir_ativos: [],
@@ -2396,6 +2397,7 @@ function financeiro() {
         nome: m.nome || '',
         descricao: m.descricao || '',
         escopo: m.escopo,
+        objetivo: m.objetivo || 'patrimonio',
         escopo_tipos: [...(m.escopo_tipos || [])],
         escopo_ativos: [...(m.escopo_ativos || [])],
         escopo_excluir_ativos: [...(m.escopo_excluir_ativos || [])],
@@ -2440,6 +2442,7 @@ function financeiro() {
         nome: m.nome.trim(),
         descricao: m.descricao || null,
         escopo: m.escopo,
+        objetivo: m.objetivo || 'patrimonio',
         escopo_tipos: m.escopo === 'tipos_ativo' ? m.escopo_tipos : [],
         escopo_ativos: m.escopo === 'ativos' ? m.escopo_ativos : [],
         escopo_excluir_ativos: (m.escopo === 'patrimonio_total' || m.escopo === 'tipos_ativo') ? m.escopo_excluir_ativos : [],
@@ -2510,7 +2513,7 @@ function financeiro() {
         nome: '', ticker: '',
         tipo: this.tiposAtivo[0] || 'Tesouro Direto',
         moeda: 'BRL', instituicao: '', detalhes_taxa: '', data_vencimento: '', observacoes: '',
-        rendimento_incorpora_saldo: null, cdi_percentual: '',
+        rendimento_incorpora_saldo: null, cdi_percentual: '', objetivo: 'patrimonio',
       };
       this.formAtivoAberto = true;
     },
@@ -2535,6 +2538,7 @@ function financeiro() {
         observacoes: a.observacoes || '',
         rendimento_incorpora_saldo: explicito,
         cdi_percentual: (a.cdi_percentual ?? '') === null ? '' : (a.cdi_percentual ?? ''),
+        objetivo: a.objetivo || 'patrimonio',
       };
       this.formAtivoAberto = true;
       this.$nextTick(() => window.scrollTo({ top: 0, behavior: 'smooth' }));

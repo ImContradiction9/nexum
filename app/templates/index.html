@@ -1085,6 +1085,15 @@
                x-model="ativoForm.instituicao"
                class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded">
       </div>
+      <div class="mb-3">
+        <label class="block text-[11px] text-zinc-500 mb-1">Objetivo deste investimento</label>
+        <select x-model="ativoForm.objetivo"
+                class="w-full bg-zinc-900 border border-zinc-800 pl-3 pr-8 py-2 text-sm rounded">
+          <option value="patrimonio">Patrimônio (riqueza de longo prazo)</option>
+          <option value="aquisicao">Aquisição de bens (reservado p/ carro, casa…)</option>
+        </select>
+        <span class="text-[11px] text-zinc-600">Só "Patrimônio" entra no gráfico de patrimônio e nas metas de patrimônio total.</span>
+      </div>
       <div class="grid grid-cols-3 gap-3 mb-3">
         <input type="text" placeholder="Detalhes da taxa (ex: 100% CDI, IPCA+5,5%)"
                x-model="ativoForm.detalhes_taxa"
@@ -1523,6 +1532,15 @@
             <label class="block text-xs tracking-wider text-zinc-500 mb-1.5">Descrição (opcional)</label>
             <input type="text" x-model="metaModal.descricao"
                    class="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 focus:border-amber-700 focus:outline-none">
+          </div>
+
+          <div>
+            <label class="block text-xs tracking-wider text-zinc-500 mb-1.5">Objetivo</label>
+            <select x-model="metaModal.objetivo"
+                    class="w-full bg-zinc-950 border border-zinc-800 rounded pl-3 pr-8 py-2 focus:border-amber-700 focus:outline-none">
+              <option value="patrimonio">Patrimônio</option>
+              <option value="aquisicao">Aquisição de bens</option>
+            </select>
           </div>
 
           <div>

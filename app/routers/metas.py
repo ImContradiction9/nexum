@@ -166,6 +166,7 @@ def _calcular_saldos_brl(db: Session):
         "ritmo_por_tipo_mensal": ritmo_por_tipo_mensal,
         "ritmo_por_ativo_mensal": ritmo_por_ativo_mensal,
         "tipo_por_ativo": {aid: a.tipo for aid, a in ativo_por_id.items()},
+        "objetivo_por_ativo": {aid: (a.objetivo or "patrimonio") for aid, a in ativo_por_id.items()},
         "taxa_anual_por_tipo": taxa_anual_por_tipo,
         "taxa_anual_por_ativo": taxa_anual_por_ativo,
         "taxa_anual_total": taxa_anual_total,
@@ -243,6 +244,7 @@ def _calcular_progresso_meta(meta: Meta, saldos: dict) -> dict:
     por_ativo_brt = saldos.get("por_ativo", {})
     ritmo_por_ativo = saldos.get("ritmo_por_ativo_mensal", {})
     tipo_por_ativo = saldos.get("tipo_por_ativo", {})
+    objetivo_por_ativo = saldos.get("objetivo_por_ativo", {})
 
     # Ativos a IGNORAR nesta meta (ex: reservas pra carro/casa fora do "patrimônio").
     try:
@@ -251,13 +253,23 @@ def _calcular_progresso_meta(meta: Meta, saldos: dict) -> dict:
         excluir = set()
 
     if meta.escopo == "patrimonio_total":
-        valor_atual = saldos.get("total_liquido_brl", saldos["total_brl"])
-        valor_atual_bruto = saldos["total_brl"]
-        ritmo = saldos["ritmo_mensal_brl"]
-        for i in excluir:                       # desconta os ignorados
-            valor_atual -= por_ativo_liq.get(i, 0)
-            valor_atual_bruto -= por_ativo_brt.get(i, 0)
-            ritmo -= ritmo_por_ativo.get(i, 0)
+        # Patrimônio = só ativos com objetivo='patrimonio' (exclui reservas de
+        # aquisição de bens, ex: carro/casa). Ignorados manuais saem por cima.
+        ids_pat = [i for i, o in objetivo_por_ativo.items()
+                   if o == "patrimonio" and i not in excluir]
+        # Sem o mapa (saldos sintéticos de teste), cai no total geral.
+        if objetivo_por_ativo:
+            valor_atual = sum(por_ativo_liq.get(i, 0) for i in ids_pat)
+            valor_atual_bruto = sum(por_ativo_brt.get(i, 0) for i in ids_pat)
+            ritmo = sum(ritmo_por_ativo.get(i, 0) for i in ids_pat)
+        else:
+            valor_atual = saldos.get("total_liquido_brl", saldos["total_brl"])
+            valor_atual_bruto = saldos["total_brl"]
+            ritmo = saldos["ritmo_mensal_brl"]
+            for i in excluir:
+                valor_atual -= por_ativo_liq.get(i, 0)
+                valor_atual_bruto -= por_ativo_brt.get(i, 0)
+                ritmo -= ritmo_por_ativo.get(i, 0)
     elif meta.escopo == "tipos_ativo":
         try:
             tipos = _json.loads(meta.escopo_tipos or "[]")
@@ -369,6 +381,7 @@ def _serializar_meta(meta: Meta, saldos: dict) -> dict:
         "escopo_tipos": tipos,
         "escopo_ativos": ativos_ids,
         "escopo_excluir_ativos": excluir_ids,
+        "objetivo": meta.objetivo or "patrimonio",
         "valor_atual_manual": meta.valor_atual_manual or 0,
         "valor_alvo": meta.valor_alvo,
         "data_alvo": meta.data_alvo.isoformat() if meta.data_alvo else None,
@@ -501,6 +514,7 @@ def criar_meta(dados: dict, db: Session = Depends(get_db)):
         escopo_tipos=_json.dumps(tipos) if escopo == "tipos_ativo" else None,
         escopo_ativos=_json.dumps(ativos_ids) if escopo == "ativos" else None,
         escopo_excluir_ativos=_json.dumps(excluir_ids) if excluir_ids else None,
+        objetivo=("aquisicao" if dados.get("objetivo") == "aquisicao" else "patrimonio"),
         valor_atual_manual=float(dados.get("valor_atual_manual") or 0) if escopo == "manual" else 0,
         valor_alvo=valor_alvo,
         data_alvo=data_alvo,
@@ -564,6 +578,8 @@ def atualizar_meta(meta_id: int, dados: dict, db: Session = Depends(get_db)):
     if "escopo_excluir_ativos" in dados:
         ex = _parse_ids(dados["escopo_excluir_ativos"])
         m.escopo_excluir_ativos = _json.dumps(ex) if ex else None
+    if "objetivo" in dados:
+        m.objetivo = "aquisicao" if dados["objetivo"] == "aquisicao" else "patrimonio"
     if "valor_atual_manual" in dados:
         try:
             m.valor_atual_manual = float(dados["valor_atual_manual"])
