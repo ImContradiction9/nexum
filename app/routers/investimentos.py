@@ -862,14 +862,61 @@ def evolucao_patrimonio(db: Session = Depends(get_db)):
 
     snaps = db.query(PatrimonioSnapshot).order_by(PatrimonioSnapshot.data).all()
     # patrimonio_brl (objetivo=patrimonio); snapshots antigos sem a coluna caem no total_brl.
-    patr_mes = {s.data.strftime("%Y-%m"): (s.patrimonio_brl if s.patrimonio_brl is not None else s.total_brl)
-                for s in snaps}
+    patr_snap_mes = {s.data.strftime("%Y-%m"): (s.patrimonio_brl if s.patrimonio_brl is not None else s.total_brl)
+                     for s in snaps}
 
-    if not delta_mes and not patr_mes:
+    if not delta_mes and not patr_snap_mes:
         return {"serie": []}
 
-    todos = sorted(set(delta_mes) | set(patr_mes))
+    todos = sorted(set(delta_mes) | set(patr_snap_mes))
     meses = _intervalo_meses(todos[0], max(date.today().strftime("%Y-%m"), todos[-1]))
+
+    # --- Reconstrução do patrimônio mês a mês ---------------------------------
+    # Não guardamos preço histórico de renda variável (ETF), então o valor de
+    # cada mês passado é: renda fixa CDI = saldo composto naquela data (exato);
+    # demais ativos = custo acumulado (sem ganho/perda, que só medimos quando há
+    # cotação). Onde existe um snapshot real (dias em que o app rodou), ele VENCE
+    # a reconstrução — então "hoje" reflete o valor de mercado de verdade.
+    ativos_patr = [a for a in db.query(Ativo).all()
+                   if (a.objetivo or "patrimonio") == "patrimonio"]
+    ops_por_ativo = {}
+    for op in ops:   # já filtrados por objetivo=patrimonio acima
+        ops_por_ativo.setdefault(op.ativo_id, []).append(op)
+    serie_cdi = _cdi_serie(db)
+    hoje = date.today()
+
+    def _ultimo_dia_mes(m):
+        y, mo = map(int, m.split("-"))
+        prox = date(y + 1, 1, 1) if mo == 12 else date(y, mo + 1, 1)
+        return min(prox - timedelta(days=1), hoje)
+
+    def _valor_ativo_em(a, ops_ate, fim):
+        custo = 0.0
+        flows = []
+        for op in ops_ate:
+            v = (op.valor_total or 0) * (op.cotacao_cambio or 1)
+            if op.tipo in ("Compra", "Aporte"):
+                custo += v; flows.append((op.data, v))
+            elif op.tipo in ("Venda", "Resgate"):
+                custo -= v; flows.append((op.data, -v))
+        if a.cdi_percentual and serie_cdi and flows:
+            return max(cdi_mod.saldo_composto(flows, serie_cdi, a.cdi_percentual, ate=fim), 0.0)
+        return max(custo, 0.0)
+
+    patr_recon = {}
+    for m in meses:
+        fim = _ultimo_dia_mes(m)
+        total = 0.0
+        for a in ativos_patr:
+            ops_ate = [op for op in ops_por_ativo.get(a.id, [])
+                       if op.data and op.data <= fim]
+            if not ops_ate:
+                continue
+            total += _valor_ativo_em(a, ops_ate, fim)
+        patr_recon[m] = total
+
+    # Snapshots reais vencem a reconstrução (valor de mercado de verdade).
+    patr_recon.update(patr_snap_mes)
 
     serie = []
     acc = 0.0
@@ -878,6 +925,6 @@ def evolucao_patrimonio(db: Session = Depends(get_db)):
         serie.append({
             "mes": m,
             "investido": round(max(acc, 0.0), 2),
-            "patrimonio": round(patr_mes[m], 2) if m in patr_mes else None,
+            "patrimonio": round(patr_recon[m], 2) if m in patr_recon else None,
         })
     return {"serie": serie}

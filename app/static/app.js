@@ -2296,7 +2296,7 @@ function financeiro() {
               { label: 'Patrimônio', data: serie.map(p => p.patrimonio),
                 borderColor: '#34d399', backgroundColor: 'rgba(52,211,153,.12)',
                 fill: true, tension: .25, spanGaps: true, pointRadius: 2 },
-              { label: 'Investido', data: serie.map(p => p.investido),
+              { label: 'Investimentos', data: serie.map(p => p.investido),
                 borderColor: '#60a5fa', borderDash: [4, 4], fill: false, tension: .25, pointRadius: 0 },
             ],
           },
