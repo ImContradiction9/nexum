@@ -1124,6 +1124,11 @@
                       :title="'Rendimento calculado automaticamente: ' + a.cdi_percentual + '% do CDI'">
                   Auto CDI
                 </span>
+                <span x-show="a.cotacao_auto"
+                      class="text-sky-400 border border-sky-900/60 rounded px-1.5 py-0.5 text-[10px] tracking-wider"
+                      :title="'Cotação ao vivo (Yahoo): ' + a.moeda + ' ' + (a.cotacao_preco || 0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' por unidade'">
+                  Ao vivo
+                </span>
                 <span x-show="a.data_vencimento" class="font-mono">
                   vence <span x-text="a.data_vencimento"></span>
                 </span>

@@ -16,6 +16,7 @@ from ..database import Ativo, OperacaoInvestimento, CDIDiario, Configuracao
 from .. import cdi as cdi_mod
 from .. import impostos
 from .. import cambio as cambio_mod
+from .. import cotacoes as cotacoes_mod
 
 router = APIRouter()
 
@@ -124,11 +125,15 @@ def _rendimento_incorpora(a: Ativo) -> bool:
 
 
 def _serializar_ativo(a: Ativo, ops: list = None, cdi_serie: dict = None,
-                      taxa_cambio_atual: float = None) -> dict:
+                      taxa_cambio_atual: float = None, cotacoes: dict = None) -> dict:
     """Serializa um ativo com posição calculada a partir das operações.
 
     Se `cdi_serie` for fornecida e o ativo for renda fixa com `cdi_percentual`
     (e sem saldo manual), o saldo é acumulado dia a dia pela série CDI.
+
+    `cotacoes` (cache do cotacoes.py): pra renda variável com ticker, a posição
+    é qtd × cotação ao vivo (tem prioridade sobre o saldo manual), desde que a
+    moeda da cotação bata com a do ativo.
 
     `taxa_cambio_atual` (moeda→BRL de hoje) converte a POSIÇÃO em reais; o
     INVESTIDO em reais usa o câmbio da compra (custo). Se não informada, a
@@ -172,12 +177,29 @@ def _serializar_ativo(a: Ativo, ops: list = None, cdi_serie: dict = None,
     else:
         saldo_calculado = aportes_moeda - resgates_moeda
 
-    # Saldo atual, por ordem de prioridade:
-    #   1) saldo manual informado pelo usuário
-    #   2) auto-cálculo via CDI (renda fixa indexada, com cdi_percentual)
-    #   3) soma das operações
+    # Cotação ao vivo (renda variável com ticker): qtd × preço, se a moeda da
+    # cotação bate com a do ativo.
     cdi_auto = False
-    if a.saldo_atual:
+    cotacao_auto = False
+    cotacao_preco = None
+    cotacao_em = None
+    _q = cotacoes_mod.cotacao_de(cotacoes or {}, a.ticker) if a.ticker else None
+    quote_ok = bool(
+        _q and _q.get("preco") and _q.get("moeda") == a.moeda
+        and a.tipo not in TIPOS_RENDA_FIXA and qtd_total > 0
+    )
+
+    # Saldo atual, por ordem de prioridade:
+    #   1) cotação ao vivo (renda variável com ticker)
+    #   2) saldo manual informado pelo usuário
+    #   3) auto-cálculo via CDI (renda fixa indexada, com cdi_percentual)
+    #   4) soma das operações
+    if quote_ok:
+        cotacao_preco = _q["preco"]
+        cotacao_em = _q.get("em")
+        saldo_atual = qtd_total * cotacao_preco
+        cotacao_auto = True
+    elif a.saldo_atual:
         saldo_atual = a.saldo_atual
     elif (cdi_serie and a.cdi_percentual
           and a.tipo in TIPOS_RENDA_FIXA and ops):
@@ -308,6 +330,9 @@ def _serializar_ativo(a: Ativo, ops: list = None, cdi_serie: dict = None,
         "rendimento_incorpora_saldo": incorpora,
         "cdi_percentual": a.cdi_percentual,
         "cdi_auto": cdi_auto,
+        "cotacao_auto": cotacao_auto,
+        "cotacao_preco": cotacao_preco,
+        "cotacao_em": cotacao_em,
         # Líquido estimado (IR + IOF) — só renda fixa; senão = bruto.
         "saldo_liquido": saldo_liquido,
         "rentab_liquida_moeda": rentab_liquida_moeda,
@@ -367,6 +392,24 @@ def cdi_sincronizar(db: Session = Depends(get_db)):
     return res
 
 
+@router.get("/api/investimentos/cotacoes/status")
+def cotacoes_status(db: Session = Depends(get_db)):
+    return cotacoes_mod.status(db)
+
+
+@router.post("/api/investimentos/cotacoes/sincronizar")
+def cotacoes_sincronizar(db: Session = Depends(get_db)):
+    """Busca a cotação ao vivo (Yahoo) dos ativos de renda variável com ticker."""
+    ativos = db.query(Ativo).filter(
+        Ativo.ativo == True, Ativo.ticker.isnot(None),
+        ~Ativo.tipo.in_(list(TIPOS_RENDA_FIXA)),
+    ).all()
+    alvos = [(a.ticker, a.moeda) for a in ativos if (a.ticker or "").strip()]
+    res = cotacoes_mod.sincronizar(db, alvos, forcar=True)
+    res["status"] = cotacoes_mod.status(db)
+    return res
+
+
 @router.get("/api/investimentos/ativos")
 def listar_ativos(incluir_inativos: bool = False, db: Session = Depends(get_db)):
     """Lista todos os ativos com posição calculada."""
@@ -394,7 +437,9 @@ def listar_ativos(incluir_inativos: bool = False, db: Session = Depends(get_db))
         if moeda not in _taxas:
             _taxas[moeda] = cambio_mod.taxa_atual(db, moeda)
         return _taxas[moeda]
-    return [_serializar_ativo(a, por_ativo.get(a.id, []), serie, _taxa(a.moeda)) for a in ativos]
+    # Cotações ao vivo (cache; a rede só roda no botão "Atualizar" pra não travar a tela).
+    cot = cotacoes_mod.carregar_cache(db)
+    return [_serializar_ativo(a, por_ativo.get(a.id, []), serie, _taxa(a.moeda), cot) for a in ativos]
 
 
 @router.post("/api/investimentos/ativos")
@@ -607,9 +652,10 @@ def resumo_investimentos(db: Session = Depends(get_db)):
         if moeda not in _taxas:
             _taxas[moeda] = cambio_mod.taxa_atual(db, moeda)
         return _taxas[moeda]
+    cot = cotacoes_mod.carregar_cache(db)
 
     for a in ativos:
-        ser = _serializar_ativo(a, por_ativo.get(a.id, []), serie, _taxa(a.moeda))
+        ser = _serializar_ativo(a, por_ativo.get(a.id, []), serie, _taxa(a.moeda), cot)
 
         # Posições fechadas (resgatadas) podem ter investido negativo → 0 na
         # carteira. A rentabilidade usa o retorno do próprio ativo (já em R$,

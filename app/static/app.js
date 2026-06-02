@@ -2170,16 +2170,18 @@ function financeiro() {
     async atualizarTudo() {
       this.atualizandoTudo = true;
       try {
-        const [cdi, cambio] = await Promise.all([
+        const [cdi, cambio, cot] = await Promise.all([
           fetch('/api/investimentos/cdi/sincronizar', { method: 'POST' }).then(r => r.json()).catch(() => null),
           fetch('/api/cambio/sincronizar', { method: 'POST' }).then(r => r.json()).catch(() => null),
+          fetch('/api/investimentos/cotacoes/sincronizar', { method: 'POST' }).then(r => r.json()).catch(() => null),
         ]);
         if (cdi && cdi.status) this.cdiStatus = cdi.status;
         if (cambio && cambio.status) this.cambioStatus = cambio.status;
-        if ((cdi && cdi.ok) || (cambio && cambio.ok)) {
-          this.notificar('CDI, dólar e euro atualizados', 'ok');
+        const cotN = (cot && cot.status) ? cot.status.n_tickers : 0;
+        if ((cdi && cdi.ok) || (cambio && cambio.ok) || (cot && cot.ok)) {
+          this.notificar('CDI, câmbio e cotações atualizados' + (cotN ? ` (${cotN} ativos)` : ''), 'ok');
         } else {
-          this.notificar('Não consegui falar com o Banco Central agora. Tente mais tarde.', 'erro');
+          this.notificar('Não consegui atualizar agora. Tente mais tarde.', 'erro');
         }
         await this.carregarInvestimentos();
       } catch (e) {
