@@ -1640,18 +1640,6 @@ function financeiro() {
       }
     },
 
-    async salvarRepoUpdate() {
-      await this.salvarConfig('atualizacao_repo', (this.config.atualizacao_repo || '').trim());
-      await this.verificarAtualizacao();
-      if (this.appUpdate.erro === 'repo_nao_configurado') {
-        this.notificar('Informe o repositório no formato usuario/repo.', 'erro');
-      } else if (this.appUpdate.tem_atualizacao) {
-        this.notificar('Há uma versão nova disponível!', 'ok');
-      } else if (!this.appUpdate.erro) {
-        this.notificar('Você está na versão mais recente.', 'ok');
-      }
-    },
-
     // === Compartilhar na rede (celular) ===
     async carregarRedeStatus() {
       try {

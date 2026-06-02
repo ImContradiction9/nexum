@@ -62,7 +62,8 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=["matplotlib", "numpy", "pandas", "PyInstaller", "pytest"],
+    excludes=["matplotlib", "numpy", "pandas", "PyInstaller", "pytest",
+              "PIL", "Pillow", "pytesseract"],   # OCR removido (~16 MB)
     noarchive=False,
 )
 

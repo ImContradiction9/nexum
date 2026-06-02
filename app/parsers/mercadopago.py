@@ -5,62 +5,6 @@ from datetime import date
 from .helpers import executar_pdftotext
 
 
-def _extract_text_ocr(pdf_path: str) -> tuple[str, str]:
-    """
-    Fallback OCR para faturas com fonte custom (CMap quebrado) que produz
-    texto bagunçado no extract_text padrão.
-
-    Tenta localizar tesseract automaticamente em locais comuns no Windows
-    se não estiver no PATH (instalação padrão UB Mannheim).
-
-    Retorna (texto, status):
-      - ("texto extraído", "ok")
-      - ("", "sem-pytesseract"): pip install pytesseract Pillow pypdfium2
-      - ("", "sem-tesseract"): binário não está instalado/PATH
-      - ("", "erro: <msg>"): outro erro inesperado
-    """
-    try:
-        import pytesseract
-        import pypdfium2 as pdfium
-    except ImportError:
-        return "", "sem-pytesseract"
-
-    # Em Windows, tesseract.exe geralmente não está no PATH. Tenta locais comuns.
-    import os, shutil, sys
-    if sys.platform == "win32":
-        if not pytesseract.pytesseract.tesseract_cmd or not shutil.which(pytesseract.pytesseract.tesseract_cmd):
-            candidatos = [
-                r"C:\Program Files\Tesseract-OCR\tesseract.exe",
-                r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
-                os.path.expanduser(r"~\AppData\Local\Programs\Tesseract-OCR\tesseract.exe"),
-            ]
-            for c in candidatos:
-                if os.path.isfile(c):
-                    pytesseract.pytesseract.tesseract_cmd = c
-                    break
-
-    # Verifica se tesseract está acessível.
-    # Captura amplo (inclui SystemExit): algumas versões do pytesseract levantam
-    # SystemExit("Invalid tesseract version") quando há um tesseract estranho no
-    # PATH — isso não pode derrubar a importação da fatura.
-    try:
-        pytesseract.get_tesseract_version()
-    except BaseException:
-        return "", "sem-tesseract"
-
-    try:
-        pdf = pdfium.PdfDocument(pdf_path)
-        partes = []
-        for page in pdf:
-            # Renderiza página como imagem (escala 2 ≈ 144 dpi, equilibrio velocidade/qualidade)
-            bitmap = page.render(scale=2.5).to_pil()
-            txt = pytesseract.image_to_string(bitmap, config='--psm 6')
-            partes.append(txt)
-        return "\n".join(partes), "ok"
-    except Exception as e:
-        return "", f"erro: {e}"
-
-
 # === Regex ===
 
 # Vencimento aparece em duas formas:
@@ -122,40 +66,11 @@ def _infer_year_from_venc(mes_compra: int, venc: date) -> int:
 
 def parse_fatura_mercadopago(pdf_path: str, senha: str = None) -> dict:
     text = executar_pdftotext(pdf_path, senha=senha)
-    resultado = _extrair(pdf_path, text)
-
-    # Fallback: se não achou transações, é provável que o PDF tenha fonte
-    # custom (CMap quebrado) que faz extract_text gerar texto bagunçado.
-    # Tenta OCR — mais lento mas funciona.
-    if not resultado["transacoes"]:
-        text_ocr, status = _extract_text_ocr(pdf_path)
-        if status == "ok" and text_ocr:
-            try:
-                resultado_ocr = _extrair(pdf_path, text_ocr)
-                if resultado_ocr["transacoes"]:
-                    return resultado_ocr
-            except Exception:
-                pass
-        elif status == "sem-pytesseract":
-            raise ValueError(
-                "Esta fatura usa uma fonte que precisa de OCR pra ler. "
-                "Instale: pip install pytesseract Pillow"
-            )
-        elif status == "sem-tesseract":
-            raise ValueError(
-                "Esta fatura usa uma fonte que precisa de OCR pra ler. "
-                "Tesseract não está instalado. Baixe em: "
-                "https://github.com/UB-Mannheim/tesseract/wiki "
-                "(instalador Windows). Após instalar, reinicie o Nexum."
-            )
-        elif status.startswith("erro"):
-            raise ValueError(f"Falha no OCR da fatura: {status}")
-
-    return resultado
+    return _extrair(pdf_path, text)
 
 
 def _extrair(pdf_path: str, text: str) -> dict:
-    """Extração principal a partir do texto (vindo de pdftotext OU OCR)."""
+    """Extração principal a partir do texto extraído do PDF."""
     # === Cabeçalho ===
     venc_m = _RE_VENC.search(text) or _RE_VENC_FALLBACK.search(text)
     if not venc_m:

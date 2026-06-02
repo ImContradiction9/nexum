@@ -8,10 +8,3 @@ python-multipart>=0.0.9
 pywebview>=5
 # Leitura de PDF de faturas (puro pip, binário embutido — substitui o Poppler).
 pypdfium2>=4
-# OCR (opcional — só para faturas com fonte "quebrada", ex: alguns Mercado Pago).
-# Requer Tesseract instalado no sistema (não é Python — baixar separado):
-# Windows: https://github.com/UB-Mannheim/tesseract/wiki
-# Mac:     brew install tesseract
-# Linux:   apt install tesseract-ocr
-pytesseract>=0.3
-Pillow>=10
