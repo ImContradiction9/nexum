@@ -291,6 +291,12 @@ function financeiro() {
     instalandoUpdate: false,
     updateDispensado: false,
 
+    // Compartilhamento na rede (acesso pelo celular)
+    rede: { compartilhando: false, tem_pin: false, ip: null, porta: null, url: null },
+    redePin: '',
+    redeBusy: false,
+    redeQrPronto: false,
+
     async init() {
       this._carregarOcultos();
       await this.carregarCatalogos();
@@ -1606,6 +1612,92 @@ function financeiro() {
       } else if (!this.appUpdate.erro) {
         this.notificar('Você está na versão mais recente.', 'ok');
       }
+    },
+
+    // === Compartilhar na rede (celular) ===
+    async carregarRedeStatus() {
+      try {
+        const r = await fetch('/api/rede/status');
+        if (!r.ok) return;
+        this.rede = await r.json();
+        if (this.rede.compartilhando && this.rede.url) this.$nextTick(() => this.renderQrRede());
+      } catch (e) { /* silencioso */ }
+    },
+
+    async salvarPinRede() {
+      const pin = (this.redePin || '').trim();
+      if (pin.length < 4) { this.notificar('O PIN precisa ter ao menos 4 dígitos.', 'erro'); return; }
+      try {
+        const r = await fetch('/api/rede/pin', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pin }),
+        });
+        if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.detail || 'erro'); }
+        this.rede.tem_pin = true;
+        this.redePin = '';
+        this.notificar('PIN definido.', 'ok');
+      } catch (e) { this.notificar('Não consegui salvar o PIN: ' + e.message, 'erro'); }
+    },
+
+    async toggleCompartilhar() {
+      this.redeBusy = true;
+      try {
+        const ativar = !this.rede.compartilhando;
+        const body = { ativar };
+        // Se ainda não há PIN e o usuário digitou um, manda junto ao ligar.
+        if (ativar && !this.rede.tem_pin && (this.redePin || '').trim().length >= 4) {
+          body.pin = this.redePin.trim();
+        }
+        const r = await fetch('/api/rede/compartilhar', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!r.ok) {
+          const e = await r.json().catch(() => ({}));
+          if ((e.detail || '').includes('PIN')) this.notificar('Defina um PIN antes de compartilhar.', 'erro');
+          else this.notificar(e.detail || 'Não consegui ligar o compartilhamento.', 'erro');
+          return;
+        }
+        const data = await r.json();
+        this.rede.compartilhando = data.compartilhando;
+        if (data.url) { this.rede.url = data.url; this.rede.ip = data.ip; this.rede.porta = data.porta; this.rede.tem_pin = true; this.redePin = ''; }
+        if (data.compartilhando) {
+          this.$nextTick(() => this.renderQrRede());
+          this.notificar('No ar! Acesse pelo celular.', 'ok');
+        } else {
+          this.redeQrPronto = false;
+          this.notificar('Compartilhamento desligado.', 'ok');
+        }
+      } catch (e) {
+        this.notificar('Erro: ' + e.message, 'erro');
+      } finally { this.redeBusy = false; }
+    },
+
+    renderQrRede() {
+      const el = document.getElementById('rede-qr');
+      if (!el || !this.rede.url) return;
+      el.innerHTML = '';
+      if (typeof QRCode === 'undefined') { this.redeQrPronto = false; return; }
+      try {
+        new QRCode(el, { text: this.rede.url, width: 168, height: 168 });
+        this.redeQrPronto = true;
+      } catch (e) { this.redeQrPronto = false; }
+    },
+
+    copiarUrlRede() {
+      if (!this.rede.url) return;
+      navigator.clipboard?.writeText(this.rede.url)
+        .then(() => this.notificar('Endereço copiado.', 'ok'))
+        .catch(() => this.notificar('Copie manualmente: ' + this.rede.url, 'erro'));
+    },
+
+    async liberarFirewallRede() {
+      try {
+        const r = await fetch('/api/rede/firewall', { method: 'POST' });
+        const data = await r.json().catch(() => ({}));
+        if (data.ok) this.notificar('Firewall liberado para a rede local.', 'ok');
+        else this.notificar('Não consegui liberar o Firewall automaticamente. Pode ser preciso permitir o acesso manualmente.', 'erro');
+      } catch (e) { this.notificar('Erro ao liberar Firewall.', 'erro'); }
     },
 
     async salvarFamilia() {

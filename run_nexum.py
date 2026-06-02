@@ -107,7 +107,11 @@ try:
     PORTA_PADRAO = int(os.environ.get("NEXUM_PORT") or 8765)
 except ValueError:
     PORTA_PADRAO = 8765
-HOST = "127.0.0.1"
+HOST = "127.0.0.1"          # usado para abrir o navegador e checar saúde (local)
+# Escutamos em todas as interfaces para permitir acesso pelo celular na rede
+# local. O acesso de fora do PC é barrado por padrão pelo middleware de rede
+# (só passa com "Compartilhar na rede" ligado + PIN). Localhost sempre entra.
+BIND_HOST = "0.0.0.0"
 
 # Detecção de "navegador fechado" por CONEXÃO: a página mantém um EventSource
 # (SSE) aberto em /api/stream. Enquanto houver ao menos uma conexão viva, o app
@@ -183,8 +187,15 @@ def _subir_servidor(porta: int):
                for r in fastapi_app.router.routes):
         fastapi_app.add_api_route("/api/stream", _stream, methods=["GET"])
 
+    # Registra a porta real no módulo de rede (a UI usa pra montar a URL do celular).
+    try:
+        from app import rede as rede_mod
+        rede_mod.set_porta(porta)
+    except Exception:
+        pass
+
     config = uvicorn.Config(
-        fastapi_app, host=HOST, port=porta,
+        fastapi_app, host=BIND_HOST, port=porta,
         log_level="warning", access_log=False,
         log_config=None,  # evita o dictConfig do uvicorn (formatter colorido
                           # chama sys.stdout.isatty(), que quebra em modo janela)
@@ -260,15 +271,29 @@ def _vigia_conexoes(espera_inicial: int = 120, carencia: int = 6):
     - Depois, encerra se ficar `carencia`s sem nenhuma conexão viva. A carência
       cobre reload/navegação (a conexão cai e volta em ~1s) sem derrubar o app.
     """
+    try:
+        from app import rede as rede_mod
+    except Exception:
+        rede_mod = None
+
+    def _compartilhando() -> bool:
+        return bool(rede_mod and rede_mod.compartilhando())
+
     inicio = time.monotonic()
     while not _conns["viu_alguem"]:
+        if _compartilhando():
+            break  # ligou compartilhamento antes mesmo de abrir a janela: segue de pé
         if time.monotonic() - inicio > espera_inicial:
             _encerrar()
             return
         time.sleep(1)
     zero_desde = None
     while True:
-        if _conns["n"] <= 0:
+        # Enquanto estiver compartilhando na rede, NÃO encerra mesmo sem janela
+        # aberta no PC — o celular precisa que o servidor continue de pé.
+        if _compartilhando():
+            zero_desde = None
+        elif _conns["n"] <= 0:
             if zero_desde is None:
                 zero_desde = time.monotonic()
             elif time.monotonic() - zero_desde > carencia:

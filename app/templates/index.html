@@ -22,6 +22,9 @@
   <!-- Chart.js para gráficos -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
+  <!-- QRCode (para o acesso pelo celular). Opcional: se não carregar, mostra só a URL. -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+
   <link rel="stylesheet" href="/static/style.css?v={{ v }}">
 </head>
 <body class="bg-zinc-950 text-zinc-100 font-sans antialiased min-h-screen">
@@ -1815,6 +1818,63 @@
           <span x-show="!instalandoUpdate">⬆️ Instalar a versão nova agora</span>
           <span x-show="instalandoUpdate">Atualizando…</span>
         </button>
+      </div>
+
+      <!-- Compartilhar na rede (celular) -->
+      <div class="border border-zinc-800 rounded-lg p-5 mt-4" x-init="carregarRedeStatus()">
+        <label class="block text-xs tracking-wider text-zinc-400 mb-2">
+          Acessar pelo celular (rede local)
+        </label>
+        <p class="text-xs text-zinc-600 mb-3">
+          Abra o Nexum no celular usando o <strong class="text-zinc-400">mesmo Wi-Fi</strong> do PC.
+          O banco continua no PC; o celular só mostra a interface. Protegido por um PIN.
+          <span class="text-amber-500/80">Não funciona fora de casa (só na sua rede).</span>
+        </p>
+
+        <!-- PIN -->
+        <div class="mb-3">
+          <div class="flex gap-2 items-center">
+            <input type="password" inputmode="numeric" x-model="redePin"
+                   :placeholder="rede.tem_pin ? 'PIN já definido (digite para trocar)' : 'Defina um PIN (mín. 4 dígitos)'"
+                   class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded flex-1 font-mono">
+            <button @click="salvarPinRede()"
+                    class="bg-zinc-700 hover:bg-zinc-600 text-zinc-100 px-4 py-2 text-sm rounded whitespace-nowrap">
+              <span x-text="rede.tem_pin ? 'Trocar PIN' : 'Definir PIN'"></span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Toggle -->
+        <div class="flex items-center gap-3 mb-1">
+          <button @click="toggleCompartilhar()" :disabled="redeBusy"
+                  :class="rede.compartilhando ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-emerald-600 hover:bg-emerald-500 text-emerald-50'"
+                  class="px-4 py-2 text-sm rounded font-medium disabled:opacity-50">
+            <span x-show="!rede.compartilhando">📶 Compartilhar na rede</span>
+            <span x-show="rede.compartilhando">■ Parar de compartilhar</span>
+          </button>
+          <span x-show="rede.compartilhando" class="text-emerald-500 text-xs">● No ar</span>
+        </div>
+
+        <!-- Quando ligado: endereço + QR -->
+        <div x-show="rede.compartilhando && rede.url" class="mt-4 bg-zinc-950 border border-zinc-800 rounded-lg p-4">
+          <p class="text-xs text-zinc-500 mb-2">No navegador do celular, acesse:</p>
+          <div class="flex items-center gap-2 mb-3">
+            <code class="text-emerald-400 text-base font-mono break-all flex-1" x-text="rede.url"></code>
+            <button @click="copiarUrlRede()" class="text-xs text-zinc-400 hover:text-zinc-100 border border-zinc-700 rounded px-2 py-1 whitespace-nowrap">copiar</button>
+          </div>
+          <div x-show="redeQrPronto" class="flex justify-center bg-white rounded-lg p-3 w-fit mx-auto">
+            <div id="rede-qr"></div>
+          </div>
+          <p class="text-[11px] text-zinc-600 mt-3">
+            Vai pedir o PIN no celular. Se a página não abrir, clique em
+            <button @click="liberarFirewallRede()" class="underline text-zinc-400 hover:text-zinc-200">liberar no Firewall</button>
+            (pede permissão de administrador uma vez).
+          </p>
+          <p class="text-[11px] text-amber-500/70 mt-2">
+            Enquanto estiver compartilhando, o Nexum continua rodando no PC mesmo se você
+            fechar a janela. Clique em “Parar de compartilhar” quando terminar.
+          </p>
+        </div>
       </div>
     </div>
 
