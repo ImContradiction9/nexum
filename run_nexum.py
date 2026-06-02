@@ -242,6 +242,12 @@ def _abrir_navegador(porta: int):
                     exe, f"--app={url}",
                     "--window-size=1400,900",
                     f"--user-data-dir={perfil}",
+                    # Evita que o Chrome/Edge crie atalho na Área de Trabalho e
+                    # rode a "primeira execução" ao usar um perfil dedicado novo.
+                    "--no-first-run",
+                    "--no-default-browser-check",
+                    "--no-pings",
+                    "--disable-features=ProfileShortcutManager",
                 ])
             except Exception:
                 break
