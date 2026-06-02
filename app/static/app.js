@@ -2116,8 +2116,8 @@ function financeiro() {
       const cmps = {
         // Maior posição (em R$, comparável entre moedas)
         valor:  (a, b) => (b.saldo_atual_brl || 0) - (a.saldo_atual_brl || 0),
-        // Maior rentabilidade (%)
-        rentab: (a, b) => (b.rentab_pct || 0) - (a.rentab_pct || 0),
+        // Maior rentabilidade (%) — usa o % em R$, igual ao que a lista exibe
+        rentab: (a, b) => (b.rentab_brl_pct || 0) - (a.rentab_brl_pct || 0),
         // Aquisição mais recente primeiro
         data:   (a, b) => (b.data_aquisicao || '').localeCompare(a.data_aquisicao || ''),
         // Por tipo (alfabético), depois maior posição
