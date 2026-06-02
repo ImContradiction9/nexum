@@ -44,7 +44,7 @@
           o Nexum vai reiniciar sozinho.
         </span>
         <a x-show="appUpdate.url_release && !instalandoUpdate" :href="appUpdate.url_release" target="_blank"
-           class="underline text-amber-300/80 hover:text-amber-200">ver notas</a>
+           class="underline text-amber-300/80 hover:text-amber-200">Ver notas</a>
       </div>
       <div class="flex items-center gap-2">
         <button x-show="appUpdate.instalado" @click="instalarAtualizacao()"
@@ -100,7 +100,7 @@
             <path d="M21 12a9 9 0 11-3-6.7L21 8"/>
             <path d="M21 3v5h-5"/>
           </svg>
-          <span class="text-xs uppercase tracking-wider">Atualizar</span>
+          <span class="text-xs tracking-wider">Atualizar</span>
         </button>
         <label class="bg-amber-500 hover:bg-amber-400 text-zinc-950 px-4 py-1.5 text-sm font-medium rounded cursor-pointer transition">
           Importar arquivo
@@ -122,7 +122,7 @@
 
     <!-- Seletor de período -->
     <div class="flex items-center gap-2 mb-8 flex-wrap">
-      <span class="text-xs uppercase tracking-widest text-zinc-500 mr-2">Período</span>
+      <span class="text-xs tracking-widest text-zinc-500 mr-2">Período</span>
 
       <!-- Mês (select inline, comporta como preset) -->
       <select x-model="dashboard.mes"
@@ -158,7 +158,7 @@
 
     <!-- Barra de blocos ocultos (mostrar de volta) -->
     <div x-show="nBlocosOcultos() > 0" class="mb-6 flex items-center flex-wrap gap-x-2 gap-y-1 text-xs text-zinc-500">
-      <span class="text-zinc-600 uppercase tracking-wider mr-1" x-text="nBlocosOcultos() + ' bloco(s) oculto(s):'"></span>
+      <span class="text-zinc-600 tracking-wider mr-1" x-text="nBlocosOcultos() + ' bloco(s) oculto(s):'"></span>
       <template x-for="b in blocosDashboard.filter(b => blocoOculto(b.id))" :key="b.id">
         <button @click="mostrarBloco(b.id)"
                 class="px-2 py-0.5 border border-zinc-800 rounded hover:border-amber-700 hover:text-amber-400 transition"
@@ -172,13 +172,13 @@
     <!-- Receitas / Despesas / Saldo (kpis_principais) -->
     <div x-show="!blocoOculto('kpis_principais')" class="relative group mb-6">
       <button @click="ocultarBloco('kpis_principais')"
-              class="absolute right-0 -top-1 text-[10px] uppercase tracking-wider text-zinc-700 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition">
+              class="absolute right-0 -top-1 text-[10px] tracking-wider text-zinc-700 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition">
         ocultar
       </button>
       <div class="grid grid-cols-3 gap-6">
       <!-- Receitas -->
       <div class="border-l-2 border-emerald-700 pl-6">
-        <div class="text-xs uppercase tracking-widest text-zinc-500 mb-2">Receitas</div>
+        <div class="text-xs tracking-widest text-zinc-500 mb-2">Receitas</div>
         <div class="font-serif text-4xl font-medium text-emerald-400" x-text="brl(dashboard.receitas)"></div>
         <div x-show="dashboard.tem_mes_anterior" class="text-xs text-zinc-500 mt-1.5 flex items-center gap-2">
           <span x-html="setaVar(dashboard.receitas, dashboard.receitas_anteriores, 'maior_melhor')"></span>
@@ -188,7 +188,7 @@
       </div>
       <!-- Despesas -->
       <div class="border-l-2 border-red-700 pl-6">
-        <div class="text-xs uppercase tracking-widest text-zinc-500 mb-2">Despesas</div>
+        <div class="text-xs tracking-widest text-zinc-500 mb-2">Despesas</div>
         <div class="font-serif text-4xl font-medium text-red-400" x-text="brl(dashboard.despesas)"></div>
         <div x-show="dashboard.tem_mes_anterior" class="text-xs text-zinc-500 mt-1.5 flex items-center gap-2">
           <span x-html="setaVar(dashboard.despesas, dashboard.despesas_anteriores, 'menor_melhor')"></span>
@@ -198,7 +198,7 @@
       </div>
       <!-- Saldo -->
       <div class="border-l-2 border-amber-600 pl-6">
-        <div class="text-xs uppercase tracking-widest text-zinc-500 mb-2">Saldo</div>
+        <div class="text-xs tracking-widest text-zinc-500 mb-2">Saldo</div>
         <div class="font-serif text-4xl font-medium" :class="dashboard.saldo >= 0 ? 'text-amber-400' : 'text-red-400'"
              x-text="brl(dashboard.saldo)"></div>
         <div x-show="dashboard.tem_mes_anterior" class="text-xs text-zinc-500 mt-1.5 flex items-center gap-2">
@@ -214,13 +214,13 @@
     <div x-show="(dashboard.despesas > 0 || dashboard.investido_mes > 0) && !blocoOculto('kpis_secundarios')"
          class="relative group mb-6">
       <button @click="ocultarBloco('kpis_secundarios')"
-              class="absolute right-0 -top-1 text-[10px] uppercase tracking-wider text-zinc-700 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition">
+              class="absolute right-0 -top-1 text-[10px] tracking-wider text-zinc-700 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition">
         ocultar
       </button>
       <div class="grid grid-cols-3 gap-6">
       <!-- Essenciais -->
       <div class="border-l-2 border-zinc-700 pl-6">
-        <div class="text-xs uppercase tracking-widest text-zinc-500 mb-2 flex items-baseline gap-2">
+        <div class="text-xs tracking-widest text-zinc-500 mb-2 flex items-baseline gap-2">
           <span>Despesas essenciais</span>
           <span class="text-zinc-600 font-mono text-[10px]"
                 x-text="dashboard.despesas > 0 ? Math.round((dashboard.despesas_essenciais / dashboard.despesas) * 100) + '% das despesas' : ''"></span>
@@ -234,7 +234,7 @@
       </div>
       <!-- Discricionárias -->
       <div class="border-l-2 border-amber-700/60 pl-6">
-        <div class="text-xs uppercase tracking-widest text-zinc-500 mb-2 flex items-baseline gap-2">
+        <div class="text-xs tracking-widest text-zinc-500 mb-2 flex items-baseline gap-2">
           <span>Despesas discricionárias</span>
           <span class="text-zinc-600 font-mono text-[10px]"
                 x-text="dashboard.despesas > 0 ? Math.round((dashboard.despesas_discricionarias / dashboard.despesas) * 100) + '% das despesas' : ''"></span>
@@ -248,7 +248,7 @@
       </div>
       <!-- Investido -->
       <div class="border-l-2 border-emerald-600/60 pl-6">
-        <div class="text-xs uppercase tracking-widest text-zinc-500 mb-2 flex items-baseline gap-2">
+        <div class="text-xs tracking-widest text-zinc-500 mb-2 flex items-baseline gap-2">
           <span x-text="labelInvestido()"></span>
           <span class="text-zinc-600 font-mono text-[10px]"
                 x-text="dashboard.receitas > 0 && dashboard.investido_mes > 0 ? Math.round((dashboard.investido_mes / dashboard.receitas) * 100) + '% da receita' : ''"></span>
@@ -267,31 +267,31 @@
     <div x-show="dashboard.emprestimos && (dashboard.emprestimos.emprestado > 0 || dashboard.emprestimos.recebido > 0) && !blocoOculto('emprestimos')"
          class="bg-zinc-900/40 border border-zinc-800 rounded-lg p-5 mb-8 relative group">
       <button @click="ocultarBloco('emprestimos')"
-              class="absolute right-3 top-3 text-[10px] uppercase tracking-wider text-zinc-700 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition">
+              class="absolute right-3 top-3 text-[10px] tracking-wider text-zinc-700 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition">
         ocultar
       </button>
       <div class="flex items-baseline justify-between mb-4">
-        <h3 class="text-sm uppercase tracking-widest text-zinc-400">Empréstimos a terceiros · período</h3>
+        <h3 class="text-sm tracking-widest text-zinc-400">Empréstimos a terceiros · período</h3>
         <span class="text-xs text-zinc-600">Despesa = emprestou · Receita = recebeu de volta</span>
       </div>
       <div class="grid grid-cols-3 gap-6 mb-4">
         <div>
-          <div class="text-xs uppercase tracking-wider text-zinc-500 mb-1">Emprestado</div>
+          <div class="text-xs tracking-wider text-zinc-500 mb-1">Emprestado</div>
           <div class="font-serif text-2xl font-medium text-amber-300" x-text="brl(dashboard.emprestimos.emprestado)"></div>
         </div>
         <div>
-          <div class="text-xs uppercase tracking-wider text-zinc-500 mb-1">Recebido</div>
+          <div class="text-xs tracking-wider text-zinc-500 mb-1">Recebido</div>
           <div class="font-serif text-2xl font-medium text-emerald-400" x-text="brl(dashboard.emprestimos.recebido)"></div>
         </div>
         <div>
-          <div class="text-xs uppercase tracking-wider text-zinc-500 mb-1">A receber</div>
+          <div class="text-xs tracking-wider text-zinc-500 mb-1">A receber</div>
           <div class="font-serif text-2xl font-medium"
                :class="dashboard.emprestimos.saldo > 0 ? 'text-amber-300' : 'text-zinc-500'"
                x-text="brl(dashboard.emprestimos.saldo)"></div>
         </div>
       </div>
       <div x-show="dashboard.emprestimos.por_pessoa && dashboard.emprestimos.por_pessoa.length > 0">
-        <div class="text-xs uppercase tracking-wider text-zinc-500 mb-2 mt-3">Por pessoa</div>
+        <div class="text-xs tracking-wider text-zinc-500 mb-2 mt-3">Por pessoa</div>
         <div class="space-y-1.5">
           <template x-for="p in dashboard.emprestimos.por_pessoa" :key="p.nome">
             <div class="flex items-center justify-between text-sm py-1.5 border-b border-zinc-800/60">
@@ -323,11 +323,11 @@
       </div>
       <div class="flex items-center gap-3">
         <button @click="view='transacoes'; filtros.nao_categorizado=true; filtros.nao_atribuido=true; carregarTransacoes()"
-                class="text-amber-400 hover:text-amber-300 text-xs uppercase tracking-wider">
+                class="text-amber-400 hover:text-amber-300 text-xs tracking-wider">
           Resolver →
         </button>
         <button @click="ocultarBloco('alertas')"
-                class="text-[10px] uppercase tracking-wider text-zinc-700 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition">
+                class="text-[10px] tracking-wider text-zinc-700 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition">
           ocultar
         </button>
       </div>
@@ -337,7 +337,7 @@
     <div x-show="!blocoOculto('graficos')" class="group mb-12">
       <div class="flex items-center justify-end mb-2 h-4">
         <button @click="ocultarBloco('graficos')"
-                class="text-[10px] uppercase tracking-wider text-zinc-700 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition">
+                class="text-[10px] tracking-wider text-zinc-700 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition">
           ocultar
         </button>
       </div>
@@ -372,7 +372,7 @@
         <div class="flex items-baseline gap-4">
           <span class="text-xs text-zinc-500">parcelas já comprometidas</span>
           <button @click="ocultarBloco('previsao')"
-                  class="text-[10px] uppercase tracking-wider text-zinc-700 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition">
+                  class="text-[10px] tracking-wider text-zinc-700 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition">
             ocultar
           </button>
         </div>
@@ -418,7 +418,7 @@
             <span class="text-xs text-zinc-600" x-text="'(' + dashboard.por_categoria.length + ')'"></span>
           </button>
           <button @click="ocultarBloco('por_categoria')"
-                  class="text-[10px] uppercase tracking-wider text-zinc-700 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition">
+                  class="text-[10px] tracking-wider text-zinc-700 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition">
             ocultar
           </button>
         </div>
@@ -448,7 +448,7 @@
             <span class="text-xs text-zinc-600" x-text="'(' + dashboard.por_atribuicao.length + ')'"></span>
           </button>
           <button @click="ocultarBloco('por_atribuicao')"
-                  class="text-[10px] uppercase tracking-wider text-zinc-700 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition">
+                  class="text-[10px] tracking-wider text-zinc-700 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition">
             ocultar
           </button>
         </div>
@@ -457,7 +457,7 @@
             <div class="flex items-center gap-3 py-2 border-b border-zinc-900">
               <span class="w-2 h-2 rounded-full" :style="`background-color: ${a.cor}`"></span>
               <span class="flex-1 text-sm" x-text="a.nome"></span>
-              <span class="text-xs text-zinc-600 uppercase tracking-wider" x-text="a.tipo"></span>
+              <span class="text-xs text-zinc-600 tracking-wider" x-text="a.tipo"></span>
               <span class="font-mono text-sm text-zinc-300" x-text="brl(a.total)"></span>
               <span class="font-mono text-xs text-zinc-600 w-12 text-right"
                     x-text="(a.total / dashboard.despesas * 100).toFixed(1) + '%'"></span>
@@ -479,7 +479,7 @@
             <span class="text-xs text-zinc-600" x-text="'(' + dashboard.por_banco.length + ')'"></span>
           </button>
           <button @click="ocultarBloco('por_banco')"
-                  class="text-[10px] uppercase tracking-wider text-zinc-700 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition">
+                  class="text-[10px] tracking-wider text-zinc-700 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition">
             ocultar
           </button>
         </div>
@@ -506,7 +506,7 @@
             <span class="text-xs text-zinc-600" x-text="'(' + dashboard.por_forma.length + ')'"></span>
           </button>
           <button @click="ocultarBloco('por_forma')"
-                  class="text-[10px] uppercase tracking-wider text-zinc-700 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition">
+                  class="text-[10px] tracking-wider text-zinc-700 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition">
             ocultar
           </button>
         </div>
@@ -569,11 +569,11 @@
         Mostrar transferências
       </label>
       <span class="text-sm text-zinc-500 ml-auto flex items-center gap-3">
-        <button @click="detectarEstornos()" class="text-xs text-zinc-500 hover:text-amber-400 uppercase tracking-wider"
+        <button @click="detectarEstornos()" class="text-xs text-zinc-500 hover:text-amber-400 tracking-wider"
                 title="Analisa receitas e identifica estornos automaticamente">
           ↶ Detectar estornos
         </button>
-        <button @click="abrirModalNovaTransacao()" class="text-xs text-amber-500 hover:text-amber-400 uppercase tracking-wider">
+        <button @click="abrirModalNovaTransacao()" class="text-xs text-amber-500 hover:text-amber-400 tracking-wider">
           + Nova transação
         </button>
         <span>
@@ -598,7 +598,7 @@
         </div>
       </div>
       <button @click="abrirRevisaoSuspeitas()"
-              class="bg-amber-500 text-zinc-950 px-4 py-2 text-xs font-medium rounded uppercase tracking-wider hover:bg-amber-400">
+              class="bg-amber-500 text-zinc-950 px-4 py-2 text-xs font-medium rounded tracking-wider hover:bg-amber-400">
         Revisar
       </button>
     </div>
@@ -606,15 +606,15 @@
     <!-- Totais monetários da listagem -->
     <div x-show="transacoes.length > 0" class="flex items-center gap-6 mb-4 text-xs">
       <div class="flex items-center gap-2">
-        <span class="uppercase tracking-wider text-zinc-500">Receitas</span>
+        <span class="tracking-wider text-zinc-500">Receitas</span>
         <span class="font-mono text-emerald-400" x-text="brl(totaisListagem.receitas)"></span>
       </div>
       <div class="flex items-center gap-2">
-        <span class="uppercase tracking-wider text-zinc-500">Despesas</span>
+        <span class="tracking-wider text-zinc-500">Despesas</span>
         <span class="font-mono text-red-400" x-text="brl(totaisListagem.despesas)"></span>
       </div>
       <div class="flex items-center gap-2">
-        <span class="uppercase tracking-wider text-zinc-500">Saldo</span>
+        <span class="tracking-wider text-zinc-500">Saldo</span>
         <span class="font-mono font-semibold"
               :class="totaisListagem.saldo >= 0 ? 'text-emerald-400' : 'text-red-400'"
               x-text="brl(totaisListagem.saldo)"></span>
@@ -671,7 +671,7 @@
     <!-- Tabela -->
     <div class="border border-zinc-800 rounded-lg overflow-hidden">
       <table class="w-full text-sm">
-        <thead class="bg-zinc-900 text-zinc-400 text-xs uppercase tracking-wider">
+        <thead class="bg-zinc-900 text-zinc-400 text-xs tracking-wider">
           <tr>
             <th class="px-3 py-3 w-8">
               <input type="checkbox"
@@ -835,7 +835,7 @@
          class="border border-zinc-800 rounded-lg p-5 mb-4">
       <div class="grid grid-cols-3 gap-6">
         <div>
-          <div class="text-xs uppercase tracking-widest text-zinc-500 mb-2">Saldo inicial</div>
+          <div class="text-xs tracking-widest text-zinc-500 mb-2">Saldo inicial</div>
           <div class="font-mono text-2xl text-zinc-300" x-text="brl(extrato.saldo_inicial)"></div>
           <div class="text-xs text-zinc-600 mt-1">
             <span x-show="extrato.fonte_saldo === 'ofx'" class="text-emerald-600">● do extrato OFX</span>
@@ -845,7 +845,7 @@
             <span x-show="extrato.fonte_saldo === 'zero'" class="text-amber-600">
               ● começando do zero —
               <button @click="modalSaldo.show = true; modalSaldo.valor = ''; modalSaldo.data = ''"
-                      class="text-amber-400 hover:text-amber-300 underline">cadastrar saldo manual</button>
+                      class="text-amber-400 hover:text-amber-300 underline">Cadastrar saldo manual</button>
             </span>
           </div>
           <div x-show="extrato.conta.saldo_inicial_manual !== null && extrato.fonte_saldo !== 'manual'"
@@ -853,11 +853,11 @@
             <button @click="modalSaldo.show = true;
                             modalSaldo.valor = extrato.conta.saldo_inicial_manual;
                             modalSaldo.data = extrato.conta.saldo_inicial_data"
-                    class="text-zinc-500 hover:text-zinc-300 underline">editar saldo manual</button>
+                    class="text-zinc-500 hover:text-zinc-300 underline">Editar saldo manual</button>
           </div>
         </div>
         <div>
-          <div class="text-xs uppercase tracking-widest text-zinc-500 mb-2">Saldo final calculado</div>
+          <div class="text-xs tracking-widest text-zinc-500 mb-2">Saldo final calculado</div>
           <div class="font-mono text-2xl"
                :class="extrato.saldo_final >= 0 ? 'text-emerald-400' : 'text-red-400'"
                x-text="brl(extrato.saldo_final)"></div>
@@ -867,7 +867,7 @@
           </div>
         </div>
         <div>
-          <div class="text-xs uppercase tracking-widest text-zinc-500 mb-2">Movimentações</div>
+          <div class="text-xs tracking-widest text-zinc-500 mb-2">Movimentações</div>
           <div class="font-mono text-2xl text-zinc-300" x-text="extrato.n_transacoes"></div>
           <div class="text-xs text-zinc-600 mt-1" x-show="extrato.mes" x-text="'no mês ' + extrato.mes"></div>
         </div>
@@ -877,7 +877,7 @@
     <!-- Tabela do extrato -->
     <div x-show="extrato.items && extrato.items.length > 0" class="border border-zinc-800 rounded-lg overflow-hidden">
       <table class="w-full text-sm">
-        <thead class="bg-zinc-900 text-zinc-400 text-xs uppercase tracking-wider">
+        <thead class="bg-zinc-900 text-zinc-400 text-xs tracking-wider">
           <tr>
             <th class="text-left px-4 py-3 font-mono">Data</th>
             <th class="text-left px-4 py-3">Descrição</th>
@@ -932,7 +932,7 @@
     <div class="flex items-baseline justify-between mb-2">
       <h2 class="font-serif text-2xl">Carteira de investimentos</h2>
       <button @click="abrirFormAtivo()"
-              class="text-sm text-amber-500 hover:text-amber-400 uppercase tracking-wider">
+              class="text-sm text-amber-500 hover:text-amber-400 tracking-wider">
         + Novo ativo
       </button>
     </div>
@@ -952,11 +952,11 @@
         <span x-show="cambioStatus && cambioStatus.moedas && cambioStatus.moedas.EUR && cambioStatus.moedas.EUR.manual" class="text-amber-500">(manual)</span>
       </span>
       <button @click="atualizarTudo()" :disabled="atualizandoTudo"
-              class="text-emerald-600 hover:text-emerald-400 uppercase tracking-wider disabled:opacity-50">
-        <span x-text="atualizandoTudo ? 'atualizando…' : 'atualizar tudo'"></span>
+              class="text-emerald-600 hover:text-emerald-400 tracking-wider disabled:opacity-50">
+        <span x-text="atualizandoTudo ? 'Atualizando…' : 'Atualizar'"></span>
       </button>
       <button @click="abrirCambioManual()"
-              class="text-zinc-500 hover:text-zinc-300 uppercase tracking-wider">cotação manual</button>
+              class="text-zinc-500 hover:text-zinc-300 tracking-wider">Cotação manual</button>
     </div>
 
     <!-- Modal: cotação manual (dólar/euro) -->
@@ -992,16 +992,16 @@
     <!-- Resumo da carteira -->
     <div x-show="resumoInvest && resumoInvest.n_ativos > 0" class="grid grid-cols-3 gap-6 mb-10">
       <div class="border-l-2 border-blue-700 pl-6">
-        <div class="text-xs uppercase tracking-widest text-zinc-500 mb-2">Total investido</div>
+        <div class="text-xs tracking-widest text-zinc-500 mb-2">Total investido</div>
         <div class="font-serif text-3xl font-medium text-blue-400" x-text="brl(resumoInvest.total_investido_brl || 0)"></div>
       </div>
       <div class="border-l-2 border-emerald-700 pl-6">
-        <div class="text-xs uppercase tracking-widest text-zinc-500 mb-2">Posição atual</div>
+        <div class="text-xs tracking-widest text-zinc-500 mb-2">Posição atual</div>
         <div class="font-serif text-3xl font-medium text-emerald-400" x-text="brl(resumoInvest.total_atual_brl || 0)"></div>
       </div>
       <div class="border-l-2 pl-6"
            :class="(resumoInvest.rentab_brl || 0) >= 0 ? 'border-amber-600' : 'border-red-700'">
-        <div class="text-xs uppercase tracking-widest text-zinc-500 mb-2">Rentabilidade</div>
+        <div class="text-xs tracking-widest text-zinc-500 mb-2">Rentabilidade</div>
         <div class="font-serif text-3xl font-medium"
              :class="(resumoInvest.rentab_brl || 0) >= 0 ? 'text-amber-400' : 'text-red-400'">
           <span x-text="brl(resumoInvest.rentab_brl || 0)"></span>
@@ -1093,7 +1093,7 @@
 
     <!-- Ordenação -->
     <div x-show="ativos.length > 1" class="flex items-center gap-2 mb-3 text-xs">
-      <span class="text-zinc-600 uppercase tracking-wider">Ordenar por</span>
+      <span class="text-zinc-600 tracking-wider">Ordenar por</span>
       <select x-model="ordemInvest"
               class="bg-zinc-900 border border-zinc-800 rounded px-2 py-1 text-zinc-300">
         <option value="valor">Maior posição (R$)</option>
@@ -1120,9 +1120,9 @@
                 <span x-show="a.instituicao" x-text="a.instituicao"></span>
                 <span x-show="a.detalhes_taxa" x-text="a.detalhes_taxa"></span>
                 <span x-show="a.cdi_auto"
-                      class="text-emerald-500 border border-emerald-900/60 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wider"
+                      class="text-emerald-500 border border-emerald-900/60 rounded px-1.5 py-0.5 text-[10px] tracking-wider"
                       :title="'Rendimento calculado automaticamente: ' + a.cdi_percentual + '% do CDI'">
-                  auto CDI
+                  Auto CDI
                 </span>
                 <span x-show="a.data_vencimento" class="font-mono">
                   vence <span x-text="a.data_vencimento"></span>
@@ -1130,7 +1130,7 @@
               </div>
             </div>
             <div class="text-right whitespace-nowrap">
-              <div class="text-xs uppercase text-zinc-500">Posição</div>
+              <div class="text-xs text-zinc-500">Posição</div>
               <div class="font-mono text-zinc-200" x-text="(a.moeda !== 'BRL' ? a.moeda + ' ' : 'R$ ') + (a.saldo_atual || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})"></div>
               <!-- Posição convertida em R$ pela cotação ATUAL (ativos em moeda estrangeira) -->
               <div x-show="a.moeda !== 'BRL'" class="text-[11px] text-zinc-400 font-mono cursor-help"
@@ -1146,7 +1146,7 @@
               <div x-show="a.eh_renda_fixa && a.isento_ir" class="text-[11px] text-emerald-600">isento de IR</div>
             </div>
             <div class="text-right whitespace-nowrap" x-show="a.valor_investido_moeda > 0">
-              <div class="text-xs uppercase text-zinc-500">Investido</div>
+              <div class="text-xs text-zinc-500">Investido</div>
               <div class="font-mono text-zinc-400 text-sm" x-text="(a.moeda !== 'BRL' ? a.moeda + ' ' : 'R$ ') + a.valor_investido_moeda.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})"></div>
               <!-- Investido em R$ pelo câmbio da COMPRA (custo) -->
               <div x-show="a.moeda !== 'BRL'" class="text-[11px] text-zinc-600 font-mono cursor-help"
@@ -1155,7 +1155,7 @@
               </div>
             </div>
             <div class="text-right whitespace-nowrap" x-show="a.valor_investido_moeda > 0">
-              <div class="text-xs uppercase text-zinc-500">Rentab.</div>
+              <div class="text-xs text-zinc-500">Rentab.</div>
               <!-- Rentabilidade em R$ (retorno total: capital + câmbio + dividendos) -->
               <div class="font-mono text-sm cursor-help" :class="a.rentab_brl >= 0 ? 'text-emerald-400' : 'text-red-400'"
                    :title="(a.moeda !== 'BRL' ? ('Em ' + a.moeda + ': ' + (a.rentab_moeda >= 0 ? '+' : '') + a.rentab_pct.toFixed(2) + '% · ') : '') + 'inclui dividendos e variação cambial'"
@@ -1274,7 +1274,7 @@
                 Nenhuma operação registrada. Use os botões acima pra adicionar.
               </div>
               <table x-show="(operacoesPorAtivo[a.id] || []).length > 0" class="w-full text-sm">
-                <thead class="bg-zinc-900/40 text-zinc-400 text-xs uppercase tracking-wider">
+                <thead class="bg-zinc-900/40 text-zinc-400 text-xs tracking-wider">
                   <tr>
                     <th class="text-left px-5 py-2.5">Data</th>
                     <th class="text-left px-5 py-2.5">Tipo</th>
@@ -1291,8 +1291,7 @@
                     <tr class="border-t border-zinc-900">
                       <td class="px-5 py-2 font-mono text-xs text-zinc-400" x-text="op.data"></td>
                       <td class="px-5 py-2">
-                        <span :class="['Compra','Aporte'].includes(op.tipo) ? 'text-emerald-400' :
-                                       op.tipo === 'Rendimento' ? 'text-amber-400' : 'text-red-400'"
+                        <span :class="['Compra','Aporte'].includes(op.tipo) ? 'text-emerald-400' : op.tipo === 'Rendimento' ? 'text-amber-400' : 'text-red-400'"
                               x-text="op.tipo"></span>
                       </td>
                       <td class="px-5 py-2 text-right font-mono text-xs"
@@ -1352,7 +1351,7 @@
               <div class="flex items-center gap-2">
                 <span x-show="m.nivel > 0" class="text-zinc-600 text-xs">↳</span>
                 <h3 class="font-medium text-zinc-100 truncate" x-text="m.nome"></h3>
-                <span x-show="m.percentual >= 100" class="text-emerald-400 text-xs uppercase tracking-wider">✓ atingida</span>
+                <span x-show="m.percentual >= 100" class="text-emerald-400 text-xs tracking-wider">✓ atingida</span>
               </div>
               <div class="text-xs text-zinc-500 mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
                 <span x-show="m.escopo==='patrimonio_total'">Patrimônio total</span>
@@ -1364,7 +1363,7 @@
               </div>
             </div>
             <button @click="abrirMetaEdit(m)"
-                    class="text-xs text-zinc-500 hover:text-amber-400 uppercase tracking-wider">
+                    class="text-xs text-zinc-500 hover:text-amber-400 tracking-wider">
               Editar
             </button>
           </div>
@@ -1396,7 +1395,7 @@
                x-show="m.percentual < 100">
             <div x-show="m.aporte_mensal_necessario !== null"
                  class="bg-zinc-950/60 border border-zinc-800/60 rounded px-3 py-2">
-              <div class="text-zinc-500 uppercase tracking-wider text-[10px] mb-0.5">Pra bater no prazo</div>
+              <div class="text-zinc-500 tracking-wider text-[10px] mb-0.5">Pra bater no prazo</div>
               <div class="font-mono text-zinc-200" x-text="formatarBRL(m.aporte_mensal_necessario) + '/mês'"></div>
               <div class="text-zinc-600 text-[10px] mt-0.5"
                    x-show="m.meses_restantes !== null"
@@ -1405,13 +1404,13 @@
 
             <div x-show="m.ritmo_mensal_estimado > 0"
                  class="bg-zinc-950/60 border border-zinc-800/60 rounded px-3 py-2">
-              <div class="text-zinc-500 uppercase tracking-wider text-[10px] mb-0.5">Ritmo atual (90d)</div>
+              <div class="text-zinc-500 tracking-wider text-[10px] mb-0.5">Ritmo atual (90d)</div>
               <div class="font-mono text-zinc-200" x-text="formatarBRL(m.ritmo_mensal_estimado) + '/mês'"></div>
             </div>
 
             <div x-show="m.projecao_data_atingimento && m.projecao_data_atingimento !== 'atingida'"
                  class="bg-zinc-950/60 border border-zinc-800/60 rounded px-3 py-2">
-              <div class="text-zinc-500 uppercase tracking-wider text-[10px] mb-0.5">Projeção no ritmo</div>
+              <div class="text-zinc-500 tracking-wider text-[10px] mb-0.5">Projeção no ritmo</div>
               <div class="font-mono text-zinc-200" x-text="formatarData(m.projecao_data_atingimento)"></div>
               <div class="text-zinc-600 text-[10px] mt-0.5">
                 <span x-show="m.meses_projetados !== null" x-text="'em ' + (m.meses_projetados !== null ? m.meses_projetados.toFixed(1) : '') + ' meses'"></span>
@@ -1429,7 +1428,7 @@
                    placeholder="Novo valor atual"
                    class="flex-1 bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-xs focus:border-amber-700 focus:outline-none">
             <button @click="atualizarManual(m.id, $event.target.previousElementSibling.value)"
-                    class="text-xs text-amber-400 hover:text-amber-300 uppercase tracking-wider">
+                    class="text-xs text-amber-400 hover:text-amber-300 tracking-wider">
               Atualizar
             </button>
           </div>
@@ -1448,20 +1447,20 @@
         <div class="p-6 space-y-4 text-sm">
 
           <div>
-            <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Nome</label>
+            <label class="block text-xs tracking-wider text-zinc-500 mb-1.5">Nome</label>
             <input type="text" x-model="metaModal.nome"
                    placeholder="Ex: Patrimônio R$ 500k em 2030"
                    class="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 focus:border-amber-700 focus:outline-none">
           </div>
 
           <div>
-            <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Descrição (opcional)</label>
+            <label class="block text-xs tracking-wider text-zinc-500 mb-1.5">Descrição (opcional)</label>
             <input type="text" x-model="metaModal.descricao"
                    class="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 focus:border-amber-700 focus:outline-none">
           </div>
 
           <div>
-            <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">O que conta como progresso</label>
+            <label class="block text-xs tracking-wider text-zinc-500 mb-1.5">O que conta como progresso</label>
             <div class="grid grid-cols-2 gap-2">
               <button @click="metaModal.escopo='patrimonio_total'"
                       :class="metaModal.escopo==='patrimonio_total' ? 'bg-amber-500/20 border-amber-700 text-amber-300' : 'bg-zinc-950 border-zinc-800 text-zinc-400'"
@@ -1493,7 +1492,7 @@
           </div>
 
           <div x-show="metaModal.escopo==='tipos_ativo'">
-            <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Classes de ativo incluídas</label>
+            <label class="block text-xs tracking-wider text-zinc-500 mb-1.5">Classes de ativo incluídas</label>
             <div class="flex flex-wrap gap-1.5">
               <template x-for="t in tiposAtivoDisp" :key="t">
                 <button @click="toggleTipoMeta(t)"
@@ -1506,7 +1505,7 @@
           </div>
 
           <div x-show="metaModal.escopo==='ativos'">
-            <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Ativos incluídos</label>
+            <label class="block text-xs tracking-wider text-zinc-500 mb-1.5">Ativos incluídos</label>
             <div x-show="ativosDisp.length === 0" class="text-xs text-zinc-500">
               Nenhum ativo cadastrado. Cadastre ativos na aba Investimentos primeiro.
             </div>
@@ -1523,26 +1522,26 @@
           </div>
 
           <div x-show="metaModal.escopo==='manual'">
-            <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Valor atual</label>
+            <label class="block text-xs tracking-wider text-zinc-500 mb-1.5">Valor atual</label>
             <input type="number" step="0.01" x-model.number="metaModal.valor_atual_manual"
                    class="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 focus:border-amber-700 focus:outline-none">
           </div>
 
           <div class="grid grid-cols-2 gap-3">
             <div>
-              <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Valor alvo (R$)</label>
+              <label class="block text-xs tracking-wider text-zinc-500 mb-1.5">Valor alvo (R$)</label>
               <input type="number" step="0.01" x-model.number="metaModal.valor_alvo"
                      class="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 focus:border-amber-700 focus:outline-none">
             </div>
             <div>
-              <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Data alvo (opcional)</label>
+              <label class="block text-xs tracking-wider text-zinc-500 mb-1.5">Data alvo (opcional)</label>
               <input type="date" x-model="metaModal.data_alvo"
                      class="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 focus:border-amber-700 focus:outline-none">
             </div>
           </div>
 
           <div>
-            <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Taxa de retorno esperada (% a.a., opcional)</label>
+            <label class="block text-xs tracking-wider text-zinc-500 mb-1.5">Taxa de retorno esperada (% a.a., opcional)</label>
             <input type="number" step="0.1" min="0" x-model.number="metaModal.taxa_retorno_anual"
                    placeholder="ex: 14 — em branco usa o CDI dos ativos"
                    class="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 focus:border-amber-700 focus:outline-none">
@@ -1553,7 +1552,7 @@
           </div>
 
           <div>
-            <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Meta-mãe (opcional)</label>
+            <label class="block text-xs tracking-wider text-zinc-500 mb-1.5">Meta-mãe (opcional)</label>
             <select x-model="metaModal.meta_pai_id"
                     class="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 focus:border-amber-700 focus:outline-none">
               <option value="">— Sem meta-mãe (raiz)</option>
@@ -1568,16 +1567,16 @@
         <div class="border-t border-zinc-800 px-6 py-4 flex items-center justify-between">
           <button x-show="metaModal.editando_id"
                   @click="deletarMeta(metaModal.editando_id)"
-                  class="text-xs text-red-400 hover:text-red-300 uppercase tracking-wider">
+                  class="text-xs text-red-400 hover:text-red-300 tracking-wider">
             Excluir
           </button>
           <div class="flex gap-2 ml-auto">
             <button @click="metaModal.aberto=false"
-                    class="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-4 py-1.5 text-xs uppercase tracking-wider rounded transition">
+                    class="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-4 py-1.5 text-xs tracking-wider rounded transition">
               Cancelar
             </button>
             <button @click="salvarMeta()"
-                    class="bg-amber-500 hover:bg-amber-400 text-zinc-950 px-4 py-1.5 text-xs uppercase tracking-wider font-medium rounded transition">
+                    class="bg-amber-500 hover:bg-amber-400 text-zinc-950 px-4 py-1.5 text-xs tracking-wider font-medium rounded transition">
               Salvar
             </button>
           </div>
@@ -1625,7 +1624,7 @@
 
       <!-- Seu nome -->
       <div class="border border-zinc-800 rounded-lg p-5 mb-4">
-        <label class="block text-xs uppercase tracking-wider text-zinc-400 mb-2">
+        <label class="block text-xs tracking-wider text-zinc-400 mb-2">
           Seu nome completo
         </label>
         <div class="flex gap-2">
@@ -1641,7 +1640,7 @@
 
       <!-- Família -->
       <div class="border border-zinc-800 rounded-lg p-5">
-        <label class="block text-xs uppercase tracking-wider text-zinc-400 mb-2">
+        <label class="block text-xs tracking-wider text-zinc-400 mb-2">
           Família (finanças compartilhadas)
         </label>
         <p class="text-xs text-zinc-600 mb-3">
@@ -1663,7 +1662,7 @@
 
       <!-- Atualizações -->
       <div class="border border-zinc-800 rounded-lg p-5">
-        <label class="block text-xs uppercase tracking-wider text-zinc-400 mb-2">
+        <label class="block text-xs tracking-wider text-zinc-400 mb-2">
           Atualizações do app
         </label>
         <p class="text-xs text-zinc-600 mb-1">
@@ -1705,7 +1704,7 @@
       </p>
 
       <button x-show="!formContaAberto" @click="abrirFormConta()"
-              class="text-sm text-amber-500 hover:text-amber-400 uppercase tracking-wider mb-4">
+              class="text-sm text-amber-500 hover:text-amber-400 tracking-wider mb-4">
         + Nova conta / banco
       </button>
 
@@ -1747,7 +1746,7 @@
 
       <div class="border border-zinc-800 rounded-lg overflow-hidden">
         <table class="w-full text-sm">
-          <thead class="bg-zinc-900 text-zinc-400 text-xs uppercase tracking-wider">
+          <thead class="bg-zinc-900 text-zinc-400 text-xs tracking-wider">
             <tr>
               <th class="text-left px-4 py-3">Nome</th>
               <th class="text-left px-4 py-3">Tipo</th>
@@ -1792,7 +1791,7 @@
                         <span x-text="c.tem_senha ? 'alterar' : 'adicionar'"></span>
                       </button>
                       <button x-show="c.tem_senha" @click="removerSenha(c.id)"
-                              class="text-xs text-zinc-600 hover:text-red-400 ml-1">remover</button>
+                              class="text-xs text-zinc-600 hover:text-red-400 ml-1">Remover</button>
                     </div>
                   </template>
                   <template x-if="contaEditando === c.id">
@@ -1802,8 +1801,8 @@
                              class="bg-zinc-900 border border-amber-700 px-2 py-1 text-xs rounded font-mono w-44">
                       <button @click="senhaVisivel = !senhaVisivel" class="text-xs text-zinc-500 hover:text-zinc-300"
                               x-text="senhaVisivel ? 'ocultar' : 'mostrar'"></button>
-                      <button @click="salvarSenhaConta(c.id)" class="text-xs text-amber-500 hover:text-amber-400">salvar</button>
-                      <button @click="contaEditando = null" class="text-xs text-zinc-500">cancelar</button>
+                      <button @click="salvarSenhaConta(c.id)" class="text-xs text-amber-500 hover:text-amber-400">Salvar</button>
+                      <button @click="contaEditando = null" class="text-xs text-zinc-500">Cancelar</button>
                     </div>
                   </template>
                 </td>
@@ -1824,7 +1823,7 @@
       </p>
 
       <button x-show="!formBancoAberto" @click="abrirFormBanco()"
-              class="text-sm text-amber-500 hover:text-amber-400 uppercase tracking-wider mb-4">
+              class="text-sm text-amber-500 hover:text-amber-400 tracking-wider mb-4">
         + Novo banco
       </button>
 
@@ -1842,7 +1841,7 @@
 
       <div class="border border-zinc-800 rounded-lg overflow-hidden">
         <table class="w-full text-sm">
-          <thead class="bg-zinc-900 text-zinc-400 text-xs uppercase tracking-wider">
+          <thead class="bg-zinc-900 text-zinc-400 text-xs tracking-wider">
             <tr>
               <th class="text-left px-4 py-3 w-12"></th>
               <th class="text-left px-4 py-3">Nome</th>
@@ -1881,18 +1880,18 @@
 
       <div class="flex items-center justify-between mb-4">
         <button x-show="!formCategoriaAberto" @click="abrirFormCategoria()"
-                class="text-sm text-amber-500 hover:text-amber-400 uppercase tracking-wider">
+                class="text-sm text-amber-500 hover:text-amber-400 tracking-wider">
           + Nova categoria
         </button>
         <div class="flex items-center gap-4">
           <button @click="reaplicarPadroes()"
                   title="Adiciona apenas as categorias/atribuições/regras que estiverem faltando. Não toca em nada existente."
-                  class="text-xs text-zinc-500 hover:text-emerald-400 uppercase tracking-wider">
+                  class="text-xs text-zinc-500 hover:text-emerald-400 tracking-wider">
             + Reaplicar padrões
           </button>
           <button @click="resetarClassificacao()"
                   title="Reorganiza categorias e regras pra estrutura padrão. Limpa classificação atual e reclassifica tudo."
-                  class="text-xs text-zinc-500 hover:text-amber-400 uppercase tracking-wider">
+                  class="text-xs text-zinc-500 hover:text-amber-400 tracking-wider">
             ↻ Resetar para estrutura padrão
           </button>
         </div>
@@ -1916,7 +1915,7 @@
 
       <div class="border border-zinc-800 rounded-lg overflow-hidden">
         <table class="w-full text-sm">
-          <thead class="bg-zinc-900 text-zinc-400 text-xs uppercase tracking-wider">
+          <thead class="bg-zinc-900 text-zinc-400 text-xs tracking-wider">
             <tr>
               <th class="text-left px-4 py-3 w-12"></th>
               <th class="text-left px-4 py-3">Nome</th>
@@ -1960,7 +1959,7 @@
       </p>
 
       <button x-show="!formAtribuicaoAberto" @click="abrirFormAtribuicao()"
-              class="text-sm text-amber-500 hover:text-amber-400 uppercase tracking-wider mb-4">
+              class="text-sm text-amber-500 hover:text-amber-400 tracking-wider mb-4">
         + Nova atribuição
       </button>
 
@@ -1983,7 +1982,7 @@
 
       <div class="border border-zinc-800 rounded-lg overflow-hidden">
         <table class="w-full text-sm">
-          <thead class="bg-zinc-900 text-zinc-400 text-xs uppercase tracking-wider">
+          <thead class="bg-zinc-900 text-zinc-400 text-xs tracking-wider">
             <tr>
               <th class="text-left px-4 py-3 w-12"></th>
               <th class="text-left px-4 py-3">Nome</th>
@@ -2018,7 +2017,7 @@
         Regras aplicam categoria + atribuição automaticamente quando uma palavra-chave aparece na descrição da transação.
       </p>
 
-      <button @click="novaRegra()" class="text-sm text-amber-500 hover:text-amber-400 uppercase tracking-wider mb-4">
+      <button @click="novaRegra()" class="text-sm text-amber-500 hover:text-amber-400 tracking-wider mb-4">
         + Nova regra
       </button>
 
@@ -2041,7 +2040,7 @@
 
       <div class="border border-zinc-800 rounded-lg overflow-hidden">
         <table class="w-full text-sm">
-          <thead class="bg-zinc-900 text-zinc-400 text-xs uppercase tracking-wider">
+          <thead class="bg-zinc-900 text-zinc-400 text-xs tracking-wider">
             <tr>
               <th class="text-left px-4 py-3">Palavra-chave</th>
               <th class="text-left px-4 py-3">Categoria</th>
@@ -2182,7 +2181,7 @@
 
       <div class="border border-zinc-800 rounded-lg overflow-hidden">
         <table class="w-full text-sm">
-          <thead class="bg-zinc-900 text-zinc-400 text-xs uppercase tracking-wider">
+          <thead class="bg-zinc-900 text-zinc-400 text-xs tracking-wider">
             <tr>
               <th class="text-left px-4 py-3">Banco</th>
               <th class="text-left px-4 py-3">Tipo</th>
@@ -2365,26 +2364,26 @@
 
       <div class="space-y-4">
         <div>
-          <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Emoji / Ícone</label>
+          <label class="block text-xs tracking-wider text-zinc-500 mb-1.5">Emoji / Ícone</label>
           <input type="text" x-model="editCategoriaForm.icone" maxlength="2"
                  class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded text-center w-20">
           <span class="ml-3 text-xs text-zinc-600">opcional</span>
         </div>
         <div>
-          <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Nome</label>
+          <label class="block text-xs tracking-wider text-zinc-500 mb-1.5">Nome</label>
           <input type="text" x-model="editCategoriaForm.nome" @keydown.enter="salvarEdicaoCategoria()"
                  class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full">
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Tipo</label>
+            <label class="block text-xs tracking-wider text-zinc-500 mb-1.5">Tipo</label>
             <select x-model="editCategoriaForm.tipo" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full">
               <option value="Despesa">Despesa</option>
               <option value="Receita">Receita</option>
             </select>
           </div>
           <div>
-            <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Orçamento mensal</label>
+            <label class="block text-xs tracking-wider text-zinc-500 mb-1.5">Orçamento mensal</label>
             <input type="number" min="0" step="50" x-model="editCategoriaForm.orcamento_mensal"
                    class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full font-mono">
           </div>
@@ -2414,26 +2413,26 @@
 
       <div class="space-y-4">
         <div>
-          <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Nome</label>
+          <label class="block text-xs tracking-wider text-zinc-500 mb-1.5">Nome</label>
           <input type="text" x-model="editAtribuicaoForm.nome" @keydown.enter="salvarEdicaoAtribuicao()"
                  class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full">
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Tipo</label>
+            <label class="block text-xs tracking-wider text-zinc-500 mb-1.5">Tipo</label>
             <select x-model="editAtribuicaoForm.tipo" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full">
               <option value="Pessoa">Pessoa</option>
               <option value="Grupo">Grupo</option>
             </select>
           </div>
           <div>
-            <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Cor</label>
+            <label class="block text-xs tracking-wider text-zinc-500 mb-1.5">Cor</label>
             <input type="color" x-model="editAtribuicaoForm.cor"
                    class="bg-zinc-900 border border-zinc-800 px-2 py-1 rounded w-full h-[38px] cursor-pointer">
           </div>
         </div>
         <div>
-          <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Descrição</label>
+          <label class="block text-xs tracking-wider text-zinc-500 mb-1.5">Descrição</label>
           <input type="text" x-model="editAtribuicaoForm.descricao"
                  placeholder="opcional"
                  class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full">
@@ -2476,7 +2475,7 @@
             <div class="grid grid-cols-2 gap-4 mb-3">
               <!-- Suspeita (nova) -->
               <div class="border-l-2 border-amber-700/60 pl-3">
-                <div class="text-xs uppercase tracking-wider text-amber-400 mb-1">Suspeita (nova)</div>
+                <div class="text-xs tracking-wider text-amber-400 mb-1">Suspeita (nova)</div>
                 <div class="text-sm text-zinc-200" x-text="item.suspeita.descricao"></div>
                 <div class="text-xs text-zinc-500 mt-1">
                   <span class="font-mono" x-text="formatarData(item.suspeita.data)"></span> ·
@@ -2487,7 +2486,7 @@
               </div>
               <!-- Gêmea (já no banco) -->
               <div class="border-l-2 border-zinc-700 pl-3">
-                <div class="text-xs uppercase tracking-wider text-zinc-500 mb-1">Já existente (gêmea)</div>
+                <div class="text-xs tracking-wider text-zinc-500 mb-1">Já existente (gêmea)</div>
                 <div x-show="item.gemea">
                   <div class="text-sm text-zinc-300" x-text="item.gemea && item.gemea.descricao"></div>
                   <div class="text-xs text-zinc-500 mt-1">
@@ -2529,12 +2528,12 @@
       <div class="space-y-4">
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Data</label>
+            <label class="block text-xs tracking-wider text-zinc-500 mb-1.5">Data</label>
             <input type="date" x-model="novaTransacaoForm.data"
                    class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full font-mono">
           </div>
           <div>
-            <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Tipo</label>
+            <label class="block text-xs tracking-wider text-zinc-500 mb-1.5">Tipo</label>
             <select x-model="novaTransacaoForm.tipo" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full">
               <option value="Despesa">Despesa</option>
               <option value="Receita">Receita</option>
@@ -2543,7 +2542,7 @@
         </div>
 
         <div>
-          <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Descrição</label>
+          <label class="block text-xs tracking-wider text-zinc-500 mb-1.5">Descrição</label>
           <input type="text" x-model="novaTransacaoForm.descricao"
                  placeholder="Ex: Almoço restaurante"
                  class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full">
@@ -2551,12 +2550,12 @@
 
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Valor (R$)</label>
+            <label class="block text-xs tracking-wider text-zinc-500 mb-1.5">Valor (R$)</label>
             <input type="number" min="0" step="0.01" x-model="novaTransacaoForm.valor"
                    class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full font-mono">
           </div>
           <div>
-            <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Conta</label>
+            <label class="block text-xs tracking-wider text-zinc-500 mb-1.5">Conta</label>
             <select x-model="novaTransacaoForm.conta_id" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full">
               <option value="">— escolha —</option>
               <template x-for="c in contas" :key="c.id">
@@ -2568,7 +2567,7 @@
 
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Categoria</label>
+            <label class="block text-xs tracking-wider text-zinc-500 mb-1.5">Categoria</label>
             <select x-model="novaTransacaoForm.categoria_id" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full">
               <option value="">— auto —</option>
               <template x-for="c in categorias" :key="c.id">
@@ -2577,7 +2576,7 @@
             </select>
           </div>
           <div>
-            <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Atribuição</label>
+            <label class="block text-xs tracking-wider text-zinc-500 mb-1.5">Atribuição</label>
             <select x-model="novaTransacaoForm.atribuicao_id" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full">
               <option value="">— sem —</option>
               <template x-for="a in atribuicoes" :key="a.id">
@@ -2588,7 +2587,7 @@
         </div>
 
         <div>
-          <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Observações <span class="text-zinc-600 normal-case">(opcional)</span></label>
+          <label class="block text-xs tracking-wider text-zinc-500 mb-1.5">Observações <span class="text-zinc-600 normal-case">(opcional)</span></label>
           <input type="text" x-model="novaTransacaoForm.observacoes"
                  class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full">
         </div>
