@@ -1799,19 +1799,14 @@
         </p>
         <p class="text-xs text-zinc-600 mb-3">
           O app verifica e <strong class="text-zinc-400">instala atualizações sozinho ao abrir</strong>
-          (fazendo backup do banco antes). O repositório padrão já vem configurado —
-          o campo abaixo é opcional, só pra apontar pra outro repositório
-          (formato <code class="text-zinc-400">usuario/repo</code>; releases com o
-          <code class="text-zinc-400">NexumSetup.exe</code> anexado).
+          (fazendo backup do banco antes).
         </p>
-        <div class="flex gap-2 mb-2">
-          <input x-model="config.atualizacao_repo" placeholder="usuario/nexum"
-                 class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded flex-1 font-mono">
-          <button @click="salvarRepoUpdate()"
-                  class="bg-amber-500 hover:bg-amber-400 text-zinc-950 px-4 py-2 text-sm rounded whitespace-nowrap">
-            Salvar e verificar
-          </button>
-        </div>
+        <button @click="verificarAtualizacaoManual()" :disabled="verificandoUpdate"
+                class="text-xs text-zinc-400 hover:text-zinc-100 border border-zinc-700 rounded px-3 py-1.5 mb-2 disabled:opacity-50">
+          <span x-show="!verificandoUpdate">Verificar agora</span>
+          <span x-show="verificandoUpdate">Verificando…</span>
+        </button>
+        <br>
         <button x-show="appUpdate.tem_atualizacao && appUpdate.instalado"
                 @click="instalarAtualizacao()" :disabled="instalandoUpdate"
                 class="text-sm text-amber-500 hover:text-amber-400 disabled:opacity-50">

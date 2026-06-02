@@ -289,6 +289,7 @@ function financeiro() {
     appUpdate: { tem_atualizacao: false, versao_atual: '', versao_disponivel: null,
                  notas: '', url_release: '', instalado: false, repo: '', erro: null },
     instalandoUpdate: false,
+    verificandoUpdate: false,
     updateDispensado: false,
 
     // Compartilhamento na rede (acesso pelo celular)
@@ -314,6 +315,16 @@ function financeiro() {
         const r = await fetch('/api/atualizacao/status');
         if (r.ok) this.appUpdate = await r.json();
       } catch (e) { /* offline / sem repo: silencioso */ }
+    },
+
+    async verificarAtualizacaoManual() {
+      this.verificandoUpdate = true;
+      try {
+        await this.verificarAtualizacao();
+        if (this.appUpdate.tem_atualizacao) this.notificar('Há uma versão nova disponível!', 'ok');
+        else if (!this.appUpdate.erro) this.notificar('Você está na versão mais recente.', 'ok');
+        else this.notificar('Não consegui verificar agora.', 'erro');
+      } finally { this.verificandoUpdate = false; }
     },
 
     async instalarAtualizacao(opts = {}) {
