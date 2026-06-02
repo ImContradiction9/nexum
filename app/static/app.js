@@ -2278,6 +2278,7 @@ function financeiro() {
         escopo: 'patrimonio_total',
         escopo_tipos: [],
         escopo_ativos: [],
+        escopo_excluir_ativos: [],
         valor_atual_manual: 0,
         valor_alvo: 0,
         data_alvo: '',
@@ -2295,6 +2296,7 @@ function financeiro() {
         escopo: m.escopo,
         escopo_tipos: [...(m.escopo_tipos || [])],
         escopo_ativos: [...(m.escopo_ativos || [])],
+        escopo_excluir_ativos: [...(m.escopo_excluir_ativos || [])],
         valor_atual_manual: m.valor_atual_manual || 0,
         valor_alvo: m.valor_alvo || 0,
         data_alvo: m.data_alvo || '',
@@ -2315,6 +2317,12 @@ function financeiro() {
       else this.metaModal.escopo_ativos.push(id);
     },
 
+    toggleExcluirMeta(id) {
+      const i = this.metaModal.escopo_excluir_ativos.indexOf(id);
+      if (i >= 0) this.metaModal.escopo_excluir_ativos.splice(i, 1);
+      else this.metaModal.escopo_excluir_ativos.push(id);
+    },
+
     async salvarMeta() {
       const m = this.metaModal;
       if (!m.nome.trim()) { this.notificar('Dê um nome para a meta', 'erro'); return; }
@@ -2332,6 +2340,7 @@ function financeiro() {
         escopo: m.escopo,
         escopo_tipos: m.escopo === 'tipos_ativo' ? m.escopo_tipos : [],
         escopo_ativos: m.escopo === 'ativos' ? m.escopo_ativos : [],
+        escopo_excluir_ativos: (m.escopo === 'patrimonio_total' || m.escopo === 'tipos_ativo') ? m.escopo_excluir_ativos : [],
         valor_atual_manual: m.escopo === 'manual' ? Number(m.valor_atual_manual) : 0,
         valor_alvo: Number(m.valor_alvo),
         data_alvo: m.data_alvo || null,

@@ -165,6 +165,7 @@ def _calcular_saldos_brl(db: Session):
         "ritmo_mensal_brl": ritmo_mensal_brl,
         "ritmo_por_tipo_mensal": ritmo_por_tipo_mensal,
         "ritmo_por_ativo_mensal": ritmo_por_ativo_mensal,
+        "tipo_por_ativo": {aid: a.tipo for aid, a in ativo_por_id.items()},
         "taxa_anual_por_tipo": taxa_anual_por_tipo,
         "taxa_anual_por_ativo": taxa_anual_por_ativo,
         "taxa_anual_total": taxa_anual_total,
@@ -239,10 +240,24 @@ def _calcular_progresso_meta(meta: Meta, saldos: dict) -> dict:
     # Chaves líquidas têm fallback para as brutas (compat com saldos sintéticos).
     por_tipo_liq = saldos.get("por_tipo_liquido", saldos.get("por_tipo", {}))
     por_ativo_liq = saldos.get("por_ativo_liquido", saldos.get("por_ativo", {}))
+    por_ativo_brt = saldos.get("por_ativo", {})
+    ritmo_por_ativo = saldos.get("ritmo_por_ativo_mensal", {})
+    tipo_por_ativo = saldos.get("tipo_por_ativo", {})
+
+    # Ativos a IGNORAR nesta meta (ex: reservas pra carro/casa fora do "patrimônio").
+    try:
+        excluir = {int(i) for i in _json.loads(meta.escopo_excluir_ativos or "[]")}
+    except Exception:
+        excluir = set()
+
     if meta.escopo == "patrimonio_total":
         valor_atual = saldos.get("total_liquido_brl", saldos["total_brl"])
         valor_atual_bruto = saldos["total_brl"]
         ritmo = saldos["ritmo_mensal_brl"]
+        for i in excluir:                       # desconta os ignorados
+            valor_atual -= por_ativo_liq.get(i, 0)
+            valor_atual_bruto -= por_ativo_brt.get(i, 0)
+            ritmo -= ritmo_por_ativo.get(i, 0)
     elif meta.escopo == "tipos_ativo":
         try:
             tipos = _json.loads(meta.escopo_tipos or "[]")
@@ -251,18 +266,29 @@ def _calcular_progresso_meta(meta: Meta, saldos: dict) -> dict:
         valor_atual = sum(por_tipo_liq.get(t, 0) for t in tipos)
         valor_atual_bruto = sum(saldos["por_tipo"].get(t, 0) for t in tipos)
         ritmo = sum(saldos["ritmo_por_tipo_mensal"].get(t, 0) for t in tipos)
+        for i in excluir:                       # só os que estão dentro dos tipos do escopo
+            if tipo_por_ativo.get(i) in tipos:
+                valor_atual -= por_ativo_liq.get(i, 0)
+                valor_atual_bruto -= por_ativo_brt.get(i, 0)
+                ritmo -= ritmo_por_ativo.get(i, 0)
     elif meta.escopo == "ativos":
         try:
             ids = _json.loads(meta.escopo_ativos or "[]")
         except Exception:
             ids = []
+        ids = [i for i in ids if i not in excluir]
         valor_atual = sum(por_ativo_liq.get(i, 0) for i in ids)
-        valor_atual_bruto = sum(saldos.get("por_ativo", {}).get(i, 0) for i in ids)
-        ritmo = sum(saldos.get("ritmo_por_ativo_mensal", {}).get(i, 0) for i in ids)
+        valor_atual_bruto = sum(por_ativo_brt.get(i, 0) for i in ids)
+        ritmo = sum(ritmo_por_ativo.get(i, 0) for i in ids)
     else:  # manual
         valor_atual = meta.valor_atual_manual or 0
         valor_atual_bruto = valor_atual
         ritmo = 0
+
+    # Clamp (exclusões/líquido podem gerar resíduo negativo).
+    valor_atual = max(valor_atual, 0.0)
+    valor_atual_bruto = max(valor_atual_bruto, 0.0)
+    ritmo = max(ritmo, 0.0)
 
     percentual = (valor_atual / meta.valor_alvo * 100) if meta.valor_alvo > 0 else 0
     falta = max(meta.valor_alvo - valor_atual, 0)
@@ -291,6 +317,9 @@ def _calcular_progresso_meta(meta: Meta, saldos: dict) -> dict:
         elif falta == 0:
             aporte_mensal_necessario = 0
 
+    # Prazo já passou e a meta não foi atingida → "pra bater no prazo" é inviável.
+    prazo_vencido = bool(meta.data_alvo and meta.data_alvo < date.today() and falta > 0)
+
     projecao_data = None
     meses_projetados = None
     if falta == 0:
@@ -310,6 +339,7 @@ def _calcular_progresso_meta(meta: Meta, saldos: dict) -> dict:
         "ritmo_mensal_estimado": round(ritmo, 2),
         "taxa_retorno_anual": round(r_anual * 100, 2),
         "meses_restantes": round(meses_restantes, 1) if meses_restantes is not None else None,
+        "prazo_vencido": prazo_vencido,
         "aporte_mensal_necessario": round(aporte_mensal_necessario, 2) if aporte_mensal_necessario is not None else None,
         "meses_projetados": round(meses_projetados, 1) if meses_projetados is not None else None,
         "projecao_data_atingimento": projecao_data,
@@ -326,6 +356,10 @@ def _serializar_meta(meta: Meta, saldos: dict) -> dict:
         ativos_ids = _json.loads(meta.escopo_ativos or "[]")
     except Exception:
         ativos_ids = []
+    try:
+        excluir_ids = _json.loads(meta.escopo_excluir_ativos or "[]")
+    except Exception:
+        excluir_ids = []
     return {
         "id": meta.id,
         "nome": meta.nome,
@@ -334,6 +368,7 @@ def _serializar_meta(meta: Meta, saldos: dict) -> dict:
         "escopo": meta.escopo,
         "escopo_tipos": tipos,
         "escopo_ativos": ativos_ids,
+        "escopo_excluir_ativos": excluir_ids,
         "valor_atual_manual": meta.valor_atual_manual or 0,
         "valor_alvo": meta.valor_alvo,
         "data_alvo": meta.data_alvo.isoformat() if meta.data_alvo else None,
@@ -402,6 +437,18 @@ def _validar_escopo_ativos(db: Session, ids) -> list:
     return ids
 
 
+def _parse_ids(valor) -> list:
+    """Lista de ids de ativo a ignorar (pode ser vazia). Lança 400 se não-numérica."""
+    if not valor:
+        return []
+    if not isinstance(valor, list):
+        raise HTTPException(400, "escopo_excluir_ativos deve ser uma lista")
+    try:
+        return [int(i) for i in valor]
+    except (TypeError, ValueError):
+        raise HTTPException(400, "escopo_excluir_ativos deve conter ids numéricos")
+
+
 @router.post("/api/metas")
 def criar_meta(dados: dict, db: Session = Depends(get_db)):
     nome = (dados.get("nome") or "").strip()
@@ -431,6 +478,8 @@ def criar_meta(dados: dict, db: Session = Depends(get_db)):
     if escopo == "ativos":
         ativos_ids = _validar_escopo_ativos(db, dados.get("escopo_ativos") or [])
 
+    excluir_ids = _parse_ids(dados.get("escopo_excluir_ativos"))
+
     data_alvo = None
     if dados.get("data_alvo"):
         try:
@@ -451,6 +500,7 @@ def criar_meta(dados: dict, db: Session = Depends(get_db)):
         escopo=escopo,
         escopo_tipos=_json.dumps(tipos) if escopo == "tipos_ativo" else None,
         escopo_ativos=_json.dumps(ativos_ids) if escopo == "ativos" else None,
+        escopo_excluir_ativos=_json.dumps(excluir_ids) if excluir_ids else None,
         valor_atual_manual=float(dados.get("valor_atual_manual") or 0) if escopo == "manual" else 0,
         valor_alvo=valor_alvo,
         data_alvo=data_alvo,
@@ -511,6 +561,9 @@ def atualizar_meta(meta_id: int, dados: dict, db: Session = Depends(get_db)):
         # Lista vazia = limpar (meta deixou de ser escopo=ativos). Só valida
         # quando há ids de fato.
         m.escopo_ativos = _json.dumps(_validar_escopo_ativos(db, lista)) if lista else None
+    if "escopo_excluir_ativos" in dados:
+        ex = _parse_ids(dados["escopo_excluir_ativos"])
+        m.escopo_excluir_ativos = _json.dumps(ex) if ex else None
     if "valor_atual_manual" in dados:
         try:
             m.valor_atual_manual = float(dados["valor_atual_manual"])

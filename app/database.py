@@ -363,6 +363,7 @@ class Meta(Base):
     escopo = Column(String, nullable=False)            # patrimonio_total | tipos_ativo | ativos | manual
     escopo_tipos = Column(Text)                        # JSON list de tipos (quando escopo=tipos_ativo)
     escopo_ativos = Column(Text)                       # JSON list de ids de ativo (quando escopo=ativos)
+    escopo_excluir_ativos = Column(Text)               # JSON list de ids de ativo a IGNORAR (patrimonio_total/tipos_ativo)
     valor_atual_manual = Column(Float, default=0)      # só quando escopo=manual
 
     valor_alvo = Column(Float, nullable=False)         # em BRL
@@ -444,6 +445,9 @@ def _aplicar_migracoes(engine):
     add_column_if_missing("metas", "taxa_retorno_anual", "FLOAT")
     # v1.14 — escopo de meta por ativos específicos (JSON list de ids)
     add_column_if_missing("metas", "escopo_ativos", "TEXT")
+
+    # ativos a IGNORAR numa meta (ex: reservas pra carro/casa fora do "future proof")
+    add_column_if_missing("metas", "escopo_excluir_ativos", "TEXT")
 
     add_column_if_missing("operacoes_investimento", "resgate_total", "BOOLEAN DEFAULT 0")
     _autofill_cdi_percentual(engine)
