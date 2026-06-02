@@ -2818,8 +2818,9 @@
 
   <!-- ============ FOOTER ============ -->
   <footer class="border-t border-zinc-800/80 mt-16">
-    <div class="max-w-[1600px] mx-auto px-8 py-6 text-xs text-zinc-600 flex justify-end items-center">
-      <div class="font-mono">v1.2</div>
+    <div class="max-w-[1600px] mx-auto px-4 sm:px-8 py-6 text-xs text-zinc-600 flex justify-between items-center gap-3 flex-wrap">
+      <div>Vibe Coded by Micael Ítalo</div>
+      <div class="font-mono" x-text="appUpdate.versao_atual ? ('v' + appUpdate.versao_atual) : ''"></div>
     </div>
   </footer>
 
