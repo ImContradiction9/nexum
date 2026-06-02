@@ -213,6 +213,40 @@
       </div>
     </div>
 
+    <!-- Orçamento do mês por categoria -->
+    <div x-show="orcamentos.itens && orcamentos.itens.length > 0" class="border border-zinc-800 rounded-lg p-5 mb-6">
+      <div class="flex items-baseline justify-between mb-4">
+        <span class="text-xs tracking-widest text-zinc-500">Orçamento do mês</span>
+        <span class="text-xs font-mono text-zinc-500">
+          <span x-text="brl(orcamentos.total_gasto)"></span> /
+          <span x-text="brl(orcamentos.total_orcado)"></span>
+        </span>
+      </div>
+      <div class="grid sm:grid-cols-2 gap-x-8 gap-y-3">
+        <template x-for="o in orcamentos.itens" :key="o.id">
+          <div>
+            <div class="flex items-baseline justify-between text-sm mb-1">
+              <span class="text-zinc-300 truncate">
+                <span x-show="o.icone" x-text="o.icone" class="mr-1"></span><span x-text="o.nome"></span>
+              </span>
+              <span class="font-mono text-xs whitespace-nowrap"
+                    :class="o.estourou ? 'text-red-400' : 'text-zinc-400'">
+                <span x-text="brl(o.gasto)"></span> / <span x-text="brl(o.orcamento)"></span>
+              </span>
+            </div>
+            <div class="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+              <div class="h-full rounded-full transition-all"
+                   :class="o.pct >= 100 ? 'bg-red-500' : (o.pct >= 80 ? 'bg-amber-500' : 'bg-emerald-500')"
+                   :style="'width: ' + Math.min(o.pct, 100) + '%'"></div>
+            </div>
+            <div class="text-[11px] mt-1"
+                 :class="o.estourou ? 'text-red-400' : 'text-zinc-600'"
+                 x-text="o.estourou ? ('estourou ' + brl(-o.restante)) : ('restam ' + brl(o.restante) + ' · ' + o.pct.toFixed(0) + '%')"></div>
+          </div>
+        </template>
+      </div>
+    </div>
+
     <!-- Linha secundária: breakdown (Essenciais + Discricionárias + Investido) -->
     <div x-show="(dashboard.despesas > 0 || dashboard.investido_mes > 0) && !blocoOculto('kpis_secundarios')"
          class="relative group mb-6">

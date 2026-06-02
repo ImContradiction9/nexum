@@ -73,13 +73,32 @@ def test_config_so_pelo_pc(db):
         rede_router.status(_req(host="192.168.0.99"), db=db)
 
 
+def test_bloqueio_forca_bruta():
+    ip = "192.168.0.123"
+    rede_mod.limpar_falhas(ip)
+    assert rede_mod.bloqueado_seg(ip) == 0
+    # 4 falhas: ainda liberado, com tentativas restantes diminuindo
+    for i in range(4):
+        rede_mod.registrar_falha(ip)
+    assert rede_mod.bloqueado_seg(ip) == 0
+    assert rede_mod.tentativas_restantes(ip) == 1
+    # 5ª falha: bloqueia
+    rede_mod.registrar_falha(ip)
+    assert rede_mod.bloqueado_seg(ip) > 0
+    # limpar libera
+    rede_mod.limpar_falhas(ip)
+    assert rede_mod.bloqueado_seg(ip) == 0
+
+
 def test_login_celular_valida_pin(db):
+    rede_mod.limpar_falhas("10.0.0.5")
     rede_router.compartilhar(_req(), {"ativar": True, "pin": "4321"}, db=db)
+    req = _req(host="10.0.0.5")
     # PIN errado: devolve a página de login de novo (status 200, sem cookie).
-    resp_err = rede_router.fazer_login(pin="0000", db=db)
+    resp_err = rede_router.fazer_login(request=req, pin="0000", db=db)
     assert resp_err.status_code == 200
     # PIN certo: redireciona com cookie de sessão.
-    resp_ok = rede_router.fazer_login(pin="4321", db=db)
+    resp_ok = rede_router.fazer_login(request=req, pin="4321", db=db)
     assert resp_ok.status_code == 303
     set_cookie = resp_ok.raw_headers
     assert any(b"nexum_rede" in v for _, v in set_cookie)

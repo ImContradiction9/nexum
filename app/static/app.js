@@ -29,6 +29,8 @@ function financeiro() {
 
     emprestimos: { pessoas: [], total_a_receber: 0, total_a_pagar: 0, sem_atribuicao: { despesa: 0, receita: 0 } },
 
+    orcamentos: { itens: [], total_orcado: 0, total_gasto: 0, mes: '' },
+
     // Transações
     transacoes: [],
     totalTransacoes: 0,
@@ -484,6 +486,14 @@ function financeiro() {
         this.emprestimos = await fetch(`/api/emprestimos/saldo?_=${t}`).then(r => r.json());
       } catch (e) {
         this.emprestimos = { pessoas: [], total_a_receber: 0, total_a_pagar: 0, sem_atribuicao: { despesa: 0, receita: 0 } };
+      }
+
+      // Orçamento mensal por categoria (usa o mês selecionado, se for preset 'mes')
+      try {
+        const pmes = (this.periodoPreset === 'mes' && this.dashboard.mes) ? `&mes=${encodeURIComponent(this.dashboard.mes)}` : '';
+        this.orcamentos = await fetch(`/api/orcamentos?_=${t}${pmes}`).then(r => r.json());
+      } catch (e) {
+        this.orcamentos = { itens: [], total_orcado: 0, total_gasto: 0 };
       }
 
       // Renderiza gráficos depois que o DOM atualizar

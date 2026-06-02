@@ -14,6 +14,59 @@ from .transacoes import _eh_abatedora
 router = APIRouter()
 
 
+@router.get("/api/orcamentos")
+def orcamentos(mes: Optional[str] = None, db: Session = Depends(get_db)):
+    """Acompanhamento de orçamento mensal por categoria: para cada categoria com
+    teto definido (orcamento_mensal > 0), quanto já foi gasto no mês vs o teto.
+    `mes` = "MM/YYYY" (default: mês da última transação, ou o atual)."""
+    if not mes:
+        ultima = (db.query(Transacao)
+                  .filter(Transacao.mes_referencia.isnot(None))
+                  .order_by(Transacao.id.desc()).first())
+        mes = ultima.mes_referencia if ultima else datetime.now().strftime("%m/%Y")
+
+    cats = (db.query(Categoria)
+            .filter(Categoria.orcamento_mensal > 0, Categoria.ativo == True)
+            .all())
+    if not cats:
+        return {"mes": mes, "itens": [], "total_orcado": 0.0, "total_gasto": 0.0}
+
+    ids = [c.id for c in cats]
+    gasto = {cid: 0.0 for cid in ids}
+    trans = (db.query(Transacao)
+             .options(joinedload(Transacao.categoria))
+             .filter(
+                 Transacao.mes_referencia == mes,
+                 Transacao.categoria_id.in_(ids),
+                 (Transacao.suspeita_duplicata == False) | Transacao.suspeita_duplicata.is_(None),
+             ).all())
+    for tr in trans:
+        v = tr.valor or 0.0
+        if _eh_abatedora(tr):
+            gasto[tr.categoria_id] -= v          # estorno/reembolso reduz o gasto
+        elif tr.tipo == "Despesa":
+            gasto[tr.categoria_id] += v
+
+    itens = []
+    for c in cats:
+        g = max(gasto.get(c.id, 0.0), 0.0)
+        orc = c.orcamento_mensal or 0.0
+        itens.append({
+            "id": c.id, "nome": c.nome, "icone": c.icone,
+            "orcamento": round(orc, 2), "gasto": round(g, 2),
+            "restante": round(orc - g, 2),
+            "pct": round((g / orc * 100) if orc > 0 else 0, 1),
+            "estourou": g > orc,
+        })
+    itens.sort(key=lambda x: -x["pct"])
+    return {
+        "mes": mes,
+        "itens": itens,
+        "total_orcado": round(sum(i["orcamento"] for i in itens), 2),
+        "total_gasto": round(sum(i["gasto"] for i in itens), 2),
+    }
+
+
 @router.get("/api/dashboard")
 def dashboard(
     mes: Optional[str] = None,

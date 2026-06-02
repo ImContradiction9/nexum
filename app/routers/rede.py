@@ -148,6 +148,8 @@ def _pagina_login(erro: str = "") -> HTMLResponse:
   button {{ width:100%; margin-top:16px; padding:14px; font-size:16px; font-weight:600; border:0;
             border-radius:10px; background:#10b981; color:#052e22; cursor:pointer; }}
   .erro {{ color:#f87171; font-size:14px; margin:0 0 12px; }}
+  .lembrar {{ display:flex; align-items:center; gap:8px; font-size:13px; color:#a1a1aa; margin-top:14px; cursor:pointer; }}
+  .lembrar input {{ width:auto; }}
 </style></head><body>
   <form class="card" method="post" action="/rede/login">
     <h1>Nexum</h1>
@@ -155,6 +157,7 @@ def _pagina_login(erro: str = "") -> HTMLResponse:
     {aviso}
     <input name="pin" type="password" inputmode="numeric" autocomplete="off"
            placeholder="• • • •" autofocus>
+    <label class="lembrar"><input name="lembrar" type="checkbox" value="1"> Lembrar este aparelho por 30 dias</label>
     <button type="submit">Entrar</button>
   </form>
 </body></html>"""
@@ -167,14 +170,30 @@ def pagina_entrar():
 
 
 @router.post("/rede/login")
-def fazer_login(pin: str = Form(""), db: Session = Depends(get_db)):
+def fazer_login(request: Request, pin: str = Form(""), lembrar: str = Form(None),
+                db: Session = Depends(get_db)):
     if not rede_mod.compartilhando():
         return HTMLResponse("<h2>Compartilhamento desligado no PC.</h2>", status_code=403)
+
+    ip = request.client.host if request.client else None
+
+    # Bloqueio por força-bruta: muitas tentativas erradas → espera.
+    bloq = rede_mod.bloqueado_seg(ip)
+    if bloq > 0:
+        return _pagina_login(f"Muitas tentativas. Tente de novo em {max(1, bloq // 60)} min.")
+
     cfg = _get_cfg(db, CHAVE_PIN)
     if not rede_mod.pin_confere(pin.strip(), cfg.valor if cfg else None):
-        return _pagina_login("PIN incorreto. Tente de novo.")
+        rede_mod.registrar_falha(ip)
+        if rede_mod.bloqueado_seg(ip) > 0:
+            return _pagina_login("PIN incorreto. Muitas tentativas — aguarde uns minutos.")
+        rest = rede_mod.tentativas_restantes(ip)
+        return _pagina_login(f"PIN incorreto. {rest} tentativa(s) restante(s).")
+
+    rede_mod.limpar_falhas(ip)
     token = rede_mod.novo_token()
     resp = RedirectResponse(url="/", status_code=303)
-    # Cookie de sessão (some ao fechar o navegador do celular).
-    resp.set_cookie("nexum_rede", token, httponly=True, samesite="lax", max_age=60 * 60 * 24)
+    # "Lembrar": cookie persistente de 30 dias; senão sessão de 1 dia.
+    max_age = 60 * 60 * 24 * 30 if lembrar else 60 * 60 * 24
+    resp.set_cookie("nexum_rede", token, httponly=True, samesite="lax", max_age=max_age)
     return resp
