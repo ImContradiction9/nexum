@@ -246,6 +246,9 @@ function financeiro() {
     resumoInvest: { n_ativos: 0 },
     evolucaoTemDados: false,
     _chartPatrimonio: null,
+    alocacao: { linhas: [], total_brl: 0, tem_alvo: false, soma_alvo: 0 },
+    alocacaoAlvoEdit: {},
+    _chartAlocacao: null,
     cdiStatus: null,
     sincronizandoCDI: false,
     cambioStatus: null,
@@ -2140,6 +2143,7 @@ function financeiro() {
         this.cdiStatus = cdi;
         this.cambioStatus = cambio;
         this.renderEvolucaoPatrimonio();   // gráfico de evolução (assíncrono)
+        this.carregarAlocacao();           // alocação + pizza (assíncrono)
       } catch (e) {
         console.error('Erro carregando investimentos:', e);
         this.notificar('Erro ao carregar investimentos', 'erro');
@@ -2184,6 +2188,59 @@ function financeiro() {
           },
         });
       } catch (e) { /* sem internet (Chart.js CDN) ou sem dados: silencioso */ }
+    },
+
+    async carregarAlocacao() {
+      try {
+        const d = await fetch(`/api/investimentos/alocacao?_=${Date.now()}`).then(r => r.json());
+        this.alocacao = d;
+        const edit = {};
+        (d.linhas || []).forEach(l => { if (l.pct_alvo != null) edit[l.tipo] = String(l.pct_alvo); });
+        this.alocacaoAlvoEdit = edit;
+        this.renderAlocacaoChart();
+      } catch (e) { /* silencioso */ }
+    },
+
+    async renderAlocacaoChart() {
+      if (typeof Chart === 'undefined') return;
+      await this.$nextTick();
+      const el = document.getElementById('chart-alocacao');
+      if (!el) return;
+      const ex = Chart.getChart(el); if (ex) ex.destroy();
+      if (this._chartAlocacao) { try { this._chartAlocacao.destroy(); } catch (e) {} }
+      const linhas = (this.alocacao.linhas || []).filter(l => (l.atual_brl || 0) > 0);
+      if (!linhas.length) return;
+      const cores = ['#34d399', '#60a5fa', '#fbbf24', '#f87171', '#a78bfa', '#22d3ee', '#f472b6', '#a3e635', '#fb923c'];
+      this._chartAlocacao = new Chart(el, {
+        type: 'doughnut',
+        data: {
+          labels: linhas.map(l => l.tipo),
+          datasets: [{ data: linhas.map(l => l.atual_brl), backgroundColor: cores, borderColor: '#18181b', borderWidth: 2 }],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'right', labels: { color: '#a1a1aa', boxWidth: 12, font: { size: 11 } } },
+            tooltip: { callbacks: { label: (c) => c.label + ': ' + this.brl(c.parsed) + ' (' + (this.alocacao.total_brl ? (c.parsed / this.alocacao.total_brl * 100).toFixed(1) : 0) + '%)' } },
+          },
+        },
+      });
+    },
+
+    async salvarAlocacaoAlvo() {
+      const alvo = {};
+      for (const [t, v] of Object.entries(this.alocacaoAlvoEdit)) {
+        const n = parseFloat(String(v).replace(',', '.'));
+        if (n > 0) alvo[t] = n;
+      }
+      try {
+        this.alocacao = await fetch('/api/investimentos/alocacao/alvo', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ alvo }),
+        }).then(r => r.json());
+        this.notificar('Alvos de alocação salvos', 'ok');
+        this.renderAlocacaoChart();
+      } catch (e) { this.notificar('Erro ao salvar alvos', 'erro'); }
     },
 
     async sincronizarCDI() {

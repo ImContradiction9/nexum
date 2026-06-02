@@ -4,6 +4,7 @@ Extraído de main.py (refactor por domínio). Os helpers aqui (TIPOS_ATIVO,
 _serializar_ativo, _cdi_serie, _parse_date, _parse_float_ou_none, etc.) são
 reutilizados pelo router de metas.
 """
+import json
 from datetime import date, datetime, timedelta
 from typing import Optional
 
@@ -723,6 +724,67 @@ def _intervalo_meses(ini: str, fim: str):
         if m > 12:
             m, y = 1, y + 1
     return out
+
+
+def _alocacao_alvo(db: Session) -> dict:
+    c = db.query(Configuracao).filter(Configuracao.chave == "alocacao_alvo").first()
+    try:
+        return json.loads(c.valor) if (c and c.valor) else {}
+    except (ValueError, TypeError):
+        return {}
+
+
+@router.get("/api/investimentos/alocacao")
+def alocacao(db: Session = Depends(get_db)):
+    """Alocação atual por classe (% da carteira) + alvo + quanto comprar/vender
+    pra rebalancear (delta_brl: + comprar, − vender)."""
+    res = resumo_investimentos(db)
+    total = res["total_atual_brl"] or 0
+    alvo = _alocacao_alvo(db)
+    atual_por_tipo = {t["tipo"]: t["atual_brl"] for t in res["por_tipo"]}
+    tipos = set(atual_por_tipo) | set(alvo)
+    linhas = []
+    for t in tipos:
+        atual_brl = atual_por_tipo.get(t, 0.0)
+        pct_atual = (atual_brl / total * 100) if total else 0
+        pa = alvo.get(t)
+        try:
+            pct_alvo = float(pa) if pa is not None else None
+        except (TypeError, ValueError):
+            pct_alvo = None
+        alvo_brl = (total * pct_alvo / 100) if pct_alvo is not None else None
+        delta = (alvo_brl - atual_brl) if alvo_brl is not None else None
+        linhas.append({
+            "tipo": t, "atual_brl": round(atual_brl, 2), "pct_atual": round(pct_atual, 1),
+            "pct_alvo": pct_alvo, "delta_brl": round(delta, 2) if delta is not None else None,
+        })
+    linhas.sort(key=lambda x: -x["atual_brl"])
+    return {
+        "total_brl": round(total, 2), "linhas": linhas, "tem_alvo": bool(alvo),
+        "soma_alvo": round(sum(float(v) for v in alvo.values()), 1) if alvo else 0,
+    }
+
+
+@router.post("/api/investimentos/alocacao/alvo")
+def salvar_alocacao_alvo(dados: dict, db: Session = Depends(get_db)):
+    """Define o alvo de alocação {tipo: percentual}. Percentuais <=0 ou inválidos
+    são descartados (limpa o tipo)."""
+    bruto = dados.get("alvo") or {}
+    limpo = {}
+    for t, v in bruto.items():
+        try:
+            pv = float(v)
+        except (TypeError, ValueError):
+            continue
+        if pv > 0:
+            limpo[t] = round(pv, 2)
+    c = db.query(Configuracao).filter(Configuracao.chave == "alocacao_alvo").first()
+    if not c:
+        c = Configuracao(chave="alocacao_alvo", valor="")
+        db.add(c)
+    c.valor = json.dumps(limpo)
+    db.commit()
+    return alocacao(db)
 
 
 @router.get("/api/investimentos/evolucao")

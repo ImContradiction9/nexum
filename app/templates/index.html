@@ -1023,6 +1023,45 @@
       </div>
     </div>
 
+    <!-- Alocação por classe + rebalanceamento -->
+    <div x-show="resumoInvest && resumoInvest.n_ativos > 0" x-cloak class="grid md:grid-cols-2 gap-4 mb-6">
+      <div class="border border-zinc-800 rounded-lg p-5">
+        <div class="text-xs tracking-wider text-zinc-500 mb-3">Alocação por classe</div>
+        <div style="height: 240px"><canvas id="chart-alocacao"></canvas></div>
+      </div>
+      <div class="border border-zinc-800 rounded-lg p-5">
+        <div class="flex items-center justify-between mb-3">
+          <div class="text-xs tracking-wider text-zinc-500">Alvo & rebalanceamento</div>
+          <span x-show="alocacao.tem_alvo" class="text-[11px]"
+                :class="Math.abs((alocacao.soma_alvo||0)-100) < 0.1 ? 'text-zinc-600' : 'text-amber-500'"
+                x-text="'soma alvo: ' + (alocacao.soma_alvo||0) + '%'"></span>
+        </div>
+        <div class="flex items-center gap-2 text-[10px] text-zinc-600 mb-1.5 tracking-wider">
+          <span class="flex-1">Classe</span><span class="w-10 text-right">Atual</span>
+          <span class="w-14 text-right">Alvo</span><span class="w-2"></span><span class="w-24 text-right">Rebalancear</span>
+        </div>
+        <div class="space-y-1.5">
+          <template x-for="l in alocacao.linhas" :key="l.tipo">
+            <div class="flex items-center gap-2 text-xs">
+              <span class="flex-1 text-zinc-300 truncate" x-text="l.tipo"></span>
+              <span class="w-10 text-right text-zinc-500" x-text="l.pct_atual.toFixed(0) + '%'"></span>
+              <input type="number" step="1" min="0" x-model="alocacaoAlvoEdit[l.tipo]" placeholder="—"
+                     class="w-14 bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-right font-mono">
+              <span class="w-2 text-zinc-600">%</span>
+              <span class="w-24 text-right font-mono"
+                    :class="(l.delta_brl||0) > 0.5 ? 'text-emerald-500' : ((l.delta_brl||0) < -0.5 ? 'text-red-400' : 'text-zinc-600')"
+                    x-text="l.delta_brl == null ? '—' : ((l.delta_brl>0?'+':'') + brl(l.delta_brl))"></span>
+            </div>
+          </template>
+        </div>
+        <div class="flex items-center justify-between mt-3">
+          <span class="text-[11px] text-zinc-600">Verde = comprar · vermelho = vender pra chegar no alvo</span>
+          <button @click="salvarAlocacaoAlvo()"
+                  class="bg-amber-500 hover:bg-amber-400 text-zinc-950 px-3 py-1.5 text-xs font-medium rounded">Salvar alvos</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Form novo/editar ativo -->
     <div x-show="formAtivoAberto"
          class="border border-amber-900/50 bg-amber-950/10 rounded-lg p-5 mb-6">
