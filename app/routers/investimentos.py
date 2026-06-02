@@ -12,7 +12,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from ..deps import get_db
-from ..database import Ativo, OperacaoInvestimento, CDIDiario, Configuracao
+from ..database import Ativo, OperacaoInvestimento, CDIDiario, Configuracao, PatrimonioSnapshot
 from .. import cdi as cdi_mod
 from .. import impostos
 from .. import cambio as cambio_mod
@@ -679,6 +679,9 @@ def resumo_investimentos(db: Session = Depends(get_db)):
     rentab_brl = total_rentab_brl
     rentab_pct = (rentab_brl / total_investido_brl * 100) if total_investido_brl > 0 else 0
 
+    # Foto de hoje pro gráfico de evolução (upsert por dia, best-effort).
+    _registrar_snapshot(db, total_atual_brl, total_investido_brl)
+
     return {
         "total_investido_brl": total_investido_brl,
         "total_atual_brl": total_atual_brl,
@@ -690,3 +693,74 @@ def resumo_investimentos(db: Session = Depends(get_db)):
         ],
         "n_ativos": len(ativos),
     }
+
+
+def _registrar_snapshot(db: Session, total_brl: float, investido_brl: float):
+    """Upsert da foto de patrimônio de HOJE (best-effort, tolerante a corrida)."""
+    try:
+        hoje = date.today()
+        snap = db.query(PatrimonioSnapshot).filter(PatrimonioSnapshot.data == hoje).first()
+        if snap:
+            snap.total_brl = round(total_brl, 2)
+            snap.investido_brl = round(investido_brl, 2)
+        else:
+            db.add(PatrimonioSnapshot(data=hoje, total_brl=round(total_brl, 2),
+                                      investido_brl=round(investido_brl, 2)))
+        db.commit()
+    except Exception:
+        db.rollback()
+
+
+def _intervalo_meses(ini: str, fim: str):
+    """Lista 'YYYY-MM' de ini até fim (inclusive)."""
+    yi, mi = map(int, ini.split("-"))
+    yf, mf = map(int, fim.split("-"))
+    out = []
+    y, m = yi, mi
+    while (y, m) <= (yf, mf):
+        out.append(f"{y:04d}-{m:02d}")
+        m += 1
+        if m > 12:
+            m, y = 1, y + 1
+    return out
+
+
+@router.get("/api/investimentos/evolucao")
+def evolucao_patrimonio(db: Session = Depends(get_db)):
+    """Série mensal: 'investido' (custo acumulado, reconstruído das operações,
+    histórico completo) + 'patrimonio' (snapshots; preenche de quando começou a
+    gravar). Base do gráfico de evolução da carteira."""
+    ops = db.query(OperacaoInvestimento).order_by(OperacaoInvestimento.data).all()
+    delta_mes = {}
+    for op in ops:
+        if not op.data:
+            continue
+        if op.tipo in ("Compra", "Aporte"):
+            sinal = 1
+        elif op.tipo in ("Venda", "Resgate"):
+            sinal = -1
+        else:
+            continue
+        v = (op.valor_total or 0) * (op.cotacao_cambio or 1)
+        mes = op.data.strftime("%Y-%m")
+        delta_mes[mes] = delta_mes.get(mes, 0.0) + sinal * v
+
+    snaps = db.query(PatrimonioSnapshot).order_by(PatrimonioSnapshot.data).all()
+    patr_mes = {s.data.strftime("%Y-%m"): s.total_brl for s in snaps}
+
+    if not delta_mes and not patr_mes:
+        return {"serie": []}
+
+    todos = sorted(set(delta_mes) | set(patr_mes))
+    meses = _intervalo_meses(todos[0], max(date.today().strftime("%Y-%m"), todos[-1]))
+
+    serie = []
+    acc = 0.0
+    for m in meses:
+        acc += delta_mes.get(m, 0.0)
+        serie.append({
+            "mes": m,
+            "investido": round(max(acc, 0.0), 2),
+            "patrimonio": round(patr_mes[m], 2) if m in patr_mes else None,
+        })
+    return {"serie": serie}

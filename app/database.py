@@ -335,6 +335,15 @@ class CDIDiario(Base):
     taxa = Column(Float, nullable=False)   # % ao dia (ex: 0.053400)
 
 
+class PatrimonioSnapshot(Base):
+    """Foto diária do patrimônio investido (em BRL), pra montar o gráfico de
+    evolução ao longo do tempo. Gravado (upsert por dia) ao abrir a carteira."""
+    __tablename__ = "patrimonio_snapshot"
+    data = Column(Date, primary_key=True)
+    total_brl = Column(Float, nullable=False)       # posição atual em BRL
+    investido_brl = Column(Float, nullable=False)   # custo investido em BRL
+
+
 # ============================================================
 # METAS DE PATRIMÔNIO
 # ============================================================

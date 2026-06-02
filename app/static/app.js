@@ -244,6 +244,8 @@ function financeiro() {
     ativos: [],
     operacoesPorAtivo: {},  // { ativoId: [op, op, ...] }
     resumoInvest: { n_ativos: 0 },
+    evolucaoTemDados: false,
+    _chartPatrimonio: null,
     cdiStatus: null,
     sincronizandoCDI: false,
     cambioStatus: null,
@@ -2137,10 +2139,51 @@ function financeiro() {
         this.moedasAtivo = tipos.moedas;
         this.cdiStatus = cdi;
         this.cambioStatus = cambio;
+        this.renderEvolucaoPatrimonio();   // gráfico de evolução (assíncrono)
       } catch (e) {
         console.error('Erro carregando investimentos:', e);
         this.notificar('Erro ao carregar investimentos', 'erro');
       }
+    },
+
+    async renderEvolucaoPatrimonio() {
+      try {
+        const d = await fetch(`/api/investimentos/evolucao?_=${Date.now()}`).then(r => r.json());
+        const serie = (d && d.serie) || [];
+        this.evolucaoTemDados = serie.length > 0;
+        if (!serie.length || typeof Chart === 'undefined') return;
+        await this.$nextTick();
+        const el = document.getElementById('chart-patrimonio');
+        if (!el) return;
+        const ex = Chart.getChart(el); if (ex) ex.destroy();
+        if (this._chartPatrimonio) { try { this._chartPatrimonio.destroy(); } catch (e) {} }
+        const fmtMes = (m) => { const [y, mm] = m.split('-'); return mm + '/' + y.slice(2); };
+        this._chartPatrimonio = new Chart(el, {
+          type: 'line',
+          data: {
+            labels: serie.map(p => fmtMes(p.mes)),
+            datasets: [
+              { label: 'Patrimônio', data: serie.map(p => p.patrimonio),
+                borderColor: '#34d399', backgroundColor: 'rgba(52,211,153,.12)',
+                fill: true, tension: .25, spanGaps: true, pointRadius: 2 },
+              { label: 'Investido', data: serie.map(p => p.investido),
+                borderColor: '#60a5fa', borderDash: [4, 4], fill: false, tension: .25, pointRadius: 0 },
+            ],
+          },
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            interaction: { intersect: false, mode: 'index' },
+            plugins: {
+              legend: { labels: { color: '#a1a1aa', boxWidth: 12 } },
+              tooltip: { callbacks: { label: (c) => c.dataset.label + ': ' + (c.parsed.y == null ? '—' : this.brl(c.parsed.y)) } },
+            },
+            scales: {
+              x: { ticks: { color: '#71717a', maxRotation: 0, autoSkip: true }, grid: { color: 'rgba(255,255,255,.04)' } },
+              y: { ticks: { color: '#71717a', callback: (v) => this.brl(v) }, grid: { color: 'rgba(255,255,255,.04)' } },
+            },
+          },
+        });
+      } catch (e) { /* sem internet (Chart.js CDN) ou sem dados: silencioso */ }
     },
 
     async sincronizarCDI() {
