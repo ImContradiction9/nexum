@@ -57,7 +57,12 @@ async def upload_arquivo(
         try:
             try:
                 res = importar_arquivo(db, tmp_path, senha=senha, conta_id_override=conta_id)
-                db.commit()
+                # Só persiste se de fato importou; em falha/duplicata, desfaz
+                # qualquer linha que tenha entrado na sessão.
+                if res.sucesso and not res.ja_importado:
+                    db.commit()
+                else:
+                    db.rollback()
             except Exception as e:
                 import traceback
                 print(f"[ERRO em /api/import/fatura] {e}\n{traceback.format_exc()}", flush=True)

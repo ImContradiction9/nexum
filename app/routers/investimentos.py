@@ -633,6 +633,13 @@ def excluir_operacao(op_id: int, db: Session = Depends(get_db)):
 @router.get("/api/investimentos/resumo")
 def resumo_investimentos(db: Session = Depends(get_db)):
     """Resumo da carteira: total investido em BRL + breakdown por tipo."""
+    return _resumo(db, registrar_snapshot=True)
+
+
+def _resumo(db: Session, registrar_snapshot: bool = True):
+    """Núcleo do resumo. `registrar_snapshot=False` evita a escrita no banco
+    quando chamado de um GET puro (ex.: /alocacao), que não deve ter efeito
+    colateral nem recomputar o snapshot do dia duas vezes por página."""
     ativos = db.query(Ativo).filter(Ativo.ativo == True).all()
     todas_ops = db.query(OperacaoInvestimento).all()
     por_ativo = {}
@@ -688,7 +695,8 @@ def resumo_investimentos(db: Session = Depends(get_db)):
     rentab_pct = (rentab_brl / total_investido_brl * 100) if total_investido_brl > 0 else 0
 
     # Foto de hoje pro gráfico de evolução (upsert por dia, best-effort).
-    _registrar_snapshot(db, total_atual_brl, total_investido_brl, total_patrimonio_brl)
+    if registrar_snapshot:
+        _registrar_snapshot(db, total_atual_brl, total_investido_brl, total_patrimonio_brl)
 
     return {
         "total_investido_brl": total_investido_brl,
@@ -753,7 +761,7 @@ def alocacao(db: Session = Depends(get_db)):
     do alvo), escalamos o total pra cima até a classe mais sobre-alocada bater no
     alvo. Assim toda classe só recebe aporte ≥ 0.
     """
-    res = resumo_investimentos(db)
+    res = _resumo(db, registrar_snapshot=False)   # GET puro: não grava snapshot
     total = res["total_atual_brl"] or 0
     alvo = _alocacao_alvo(db)
     atual_por_tipo = {t["tipo"]: t["atual_brl"] for t in res["por_tipo"]}

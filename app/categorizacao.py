@@ -33,8 +33,17 @@ class Classificacao:
     confianca: float        # 0-1, quanto mais alto, mais certo
 
 
-def classificar(session: Session, descricao: str) -> Classificacao:
-    """Retorna a melhor classificação automática para uma descrição."""
+def carregar_regras_ativas(session: Session) -> list:
+    """Carrega as regras ativas uma vez (para reaproveitar em loops de import)."""
+    return session.query(Regra).filter(Regra.ativa == True).all()
+
+
+def classificar(session: Session, descricao: str, regras: list = None) -> Classificacao:
+    """Retorna a melhor classificação automática para uma descrição.
+
+    `regras` pode ser passada já carregada (em loops de importação) para evitar
+    uma query ao banco por transação. Se None, carrega do banco.
+    """
     desc_norm = normalizar_descricao(descricao)
 
     cat_id = None
@@ -61,7 +70,8 @@ def classificar(session: Session, descricao: str) -> Classificacao:
 
     # === 2. REGRAS — só se memória não cobriu o campo ===
     if cat_id is None or atr_id is None:
-        regras = session.query(Regra).filter(Regra.ativa == True).all()
+        if regras is None:
+            regras = session.query(Regra).filter(Regra.ativa == True).all()
         # Filtra as que batem na descrição (case-insensitive)
         desc_upper = (descricao or "").upper()
         candidatas = []
@@ -144,9 +154,10 @@ def reclassificar_transacoes_pendentes(session: Session) -> int:
         (Transacao.atribuicao_origem == "nao_categorizado")
     ).all()
 
+    regras = carregar_regras_ativas(session)   # uma vez, não por transação
     n_resolvidas = 0
     for t in pendentes:
-        c = classificar(session, t.descricao)
+        c = classificar(session, t.descricao, regras=regras)
         atualizou = False
         if t.categoria_id is None and c.categoria_id:
             t.categoria_id = c.categoria_id

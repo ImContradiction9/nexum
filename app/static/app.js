@@ -888,16 +888,19 @@ function financeiro() {
       }
     },
 
-    /** Estado do checkbox do header: true se TODAS visíveis estão selecionadas. */
+    /** Estado do checkbox do header: true se TODAS visíveis estão selecionadas.
+     *  Usa a lista filtrada crua (a ORDEM não importa pra checar pertencimento),
+     *  evitando re-ordenar tudo a cada clique de seleção. */
     todasSelecionadas() {
-      const visiveis = this.transacoesOrdenadas();
+      const visiveis = this.transacoes;
       if (visiveis.length === 0) return false;
-      return visiveis.every(t => this.selecionadas.includes(t.id));
+      const sel = new Set(this.selecionadas);
+      return visiveis.every(t => sel.has(t.id));
     },
 
     /** Checkbox do header: marca/desmarca todas as visíveis. */
     toggleTodas() {
-      const visiveis = this.transacoesOrdenadas();
+      const visiveis = this.transacoes;
       if (this.todasSelecionadas()) {
         // Desmarca só as visíveis (não mexe em outras que possam estar selecionadas)
         const idsVisiveis = new Set(visiveis.map(t => t.id));
@@ -2286,8 +2289,8 @@ function financeiro() {
       }
     },
 
-    // Atualiza CDI + dólar + euro de uma vez (tudo do Banco Central).
-    async atualizarTudo() {
+    // Atualiza CDI + dólar + euro + cotações de uma vez (botão da aba Investimentos).
+    async atualizarCotacoes() {
       this.atualizandoTudo = true;
       try {
         const [cdi, cambio, cot] = await Promise.all([

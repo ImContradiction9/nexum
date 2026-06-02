@@ -951,7 +951,7 @@
         <span class="text-zinc-300" x-text="(cambioStatus && cambioStatus.moedas && cambioStatus.moedas.EUR && cambioStatus.moedas.EUR.usado != null) ? ('R$ ' + cambioStatus.moedas.EUR.usado.toFixed(4)) : '—'"></span>
         <span x-show="cambioStatus && cambioStatus.moedas && cambioStatus.moedas.EUR && cambioStatus.moedas.EUR.manual" class="text-amber-500">(manual)</span>
       </span>
-      <button @click="atualizarTudo()" :disabled="atualizandoTudo"
+      <button @click="atualizarCotacoes()" :disabled="atualizandoTudo"
               class="text-emerald-600 hover:text-emerald-400 tracking-wider disabled:opacity-50">
         <span x-text="atualizandoTudo ? 'Atualizando…' : 'Atualizar'"></span>
       </button>

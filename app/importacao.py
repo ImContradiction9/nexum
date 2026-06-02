@@ -18,7 +18,7 @@ from .database import Conta, Categoria, Fatura, Transacao
 from .parsers import parse_fatura
 from .parsers.ofx import parse_extrato_ofx
 from .parsers.helpers import PDFProtegido, PDFToTextNaoEncontrado
-from .categorizacao import classificar, parcelas_irmas, vincular_estorno
+from .categorizacao import classificar, carregar_regras_ativas, parcelas_irmas, vincular_estorno
 from .utils import hash_pdf, hash_dedup, normalizar_descricao
 
 
@@ -219,6 +219,8 @@ def importar_pdf(
     n_categorizadas = 0
     n_suspeitas = 0  # transações inseridas com flag suspeita_duplicata=True
 
+    regras_ativas = carregar_regras_ativas(session)   # uma vez, fora do loop
+
     for t in bill["transacoes"]:
         h_dedup = hash_dedup(banco, t["data_compra"], t["valor"], t["descricao"], t.get("parcela"))
         # Hash legado (versão antiga sem parcela) — ainda existem no banco. Compatibilidade.
@@ -239,7 +241,7 @@ def importar_pdf(
                 # Insere como suspeita pra usuário revisar (em vez de descartar como antes).
                 eh_suspeita = True
 
-        classif = classificar(session, t["descricao"])
+        classif = classificar(session, t["descricao"], regras=regras_ativas)
 
         # Tipo da transação: Receita se o parser marcar (cashback), senão Despesa
         tipo_trans = t.get("tipo", "Despesa")
@@ -590,6 +592,8 @@ def importar_ofx(session: Session, ofx_path: str, conta_id_override: int = None)
     n_suspeitas = 0
     n_categorizadas = 0
 
+    regras_ativas = carregar_regras_ativas(session)   # uma vez, fora do loop
+
     for t in transacoes:
         # Pula linhas de saldo inicial/abertura (valor zero, sem significado real)
         if t["valor"] == 0:
@@ -638,7 +642,7 @@ def importar_ofx(session: Session, ofx_path: str, conta_id_override: int = None)
             atribuicao_id = None
             atribuicao_origem = "nao_categorizado"
         else:
-            classif = classificar(session, t["descricao"])
+            classif = classificar(session, t["descricao"], regras=regras_ativas)
             categoria_id = classif.categoria_id
             categoria_origem = classif.categoria_origem
             atribuicao_id = classif.atribuicao_id
