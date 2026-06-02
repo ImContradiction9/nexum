@@ -63,8 +63,8 @@ tbody tr { transition: background-color 100ms ease; }
     grid-template-columns: 1fr !important;
     gap: 0.875rem !important;
   }
-  /* Navegação principal quebra em linhas em vez de estourar a largura */
-  header nav { flex-wrap: wrap; }
+  /* Navegação (topo e sub-abas de Config) quebra em linhas em vez de estourar */
+  nav { flex-wrap: wrap; }
 
   /* Tabelas largas: rola na horizontal mantendo o alinhamento das colunas.
      Envolvemos via overflow no contêiner .tabela-scroll (ver template);

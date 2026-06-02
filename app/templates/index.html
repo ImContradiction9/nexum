@@ -1739,15 +1739,18 @@
     </div>
 
     <!-- ====== Perfil ====== -->
-    <div x-show="subView==='perfil'" class="max-w-2xl">
+    <div x-show="subView==='perfil'" class="max-w-5xl">
       <p class="text-sm text-zinc-500 mb-6">
         Cadastre seu nome e os nomes de pessoas que compartilham finanças com você
         (cônjuge, filhos, pais). Movimentações Pix entre vocês serão tratadas como
         <em>"Transferência entre Contas"</em> e não contadas como receita/despesa.
       </p>
 
+      <div class="grid lg:grid-cols-2 gap-4 items-start">
+       <!-- Coluna esquerda: identidade + atualizações -->
+       <div class="space-y-4">
       <!-- Seu nome -->
-      <div class="border border-zinc-800 rounded-lg p-5 mb-4">
+      <div class="border border-zinc-800 rounded-lg p-5">
         <label class="block text-xs tracking-wider text-zinc-400 mb-2">
           Seu nome completo
         </label>
@@ -1815,8 +1818,10 @@
         </button>
       </div>
 
-      <!-- Compartilhar na rede (celular) -->
-      <div class="border border-zinc-800 rounded-lg p-5 mt-4" x-init="carregarRedeStatus()">
+       </div><!-- /coluna esquerda -->
+
+      <!-- Coluna direita: Compartilhar na rede (celular) -->
+      <div class="border border-zinc-800 rounded-lg p-5" x-init="carregarRedeStatus()">
         <label class="block text-xs tracking-wider text-zinc-400 mb-2">
           Acessar pelo celular (rede local)
         </label>
@@ -1871,6 +1876,7 @@
           </p>
         </div>
       </div>
+      </div><!-- /grid perfil -->
     </div>
 
     <!-- ====== Contas ====== -->
