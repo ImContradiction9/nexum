@@ -762,24 +762,22 @@
               <td class="px-4 py-2.5 text-zinc-400 text-xs whitespace-nowrap" x-text="t.forma_pagamento || '—'"></td>
 
               <td class="px-4 py-2.5">
-                <select x-effect="categorias.length; $el.value = t.categoria_id || ''"
-                        @change="atualizarTransacao(t.id, 'categoria_id', $event.target.value || null)"
+                <select @change="atualizarTransacao(t.id, 'categoria_id', $event.target.value || null)"
                         class="bg-transparent border-0 hover:bg-zinc-800 px-1 py-0.5 rounded text-xs cursor-pointer w-full"
                         :class="!t.categoria_id ? 'text-amber-500' : (t.categoria_origem === 'manual' ? 'text-zinc-100' : 'text-zinc-400')">
-                  <option value="">— sem categoria —</option>
+                  <option value="" :selected="!t.categoria_id">— sem categoria —</option>
                   <template x-for="c in categorias" :key="c.id">
-                    <option :value="c.id" x-text="c.nome"></option>
+                    <option :value="c.id" :selected="c.id == t.categoria_id" x-text="c.nome"></option>
                   </template>
                 </select>
               </td>
               <td class="px-4 py-2.5">
-                <select x-effect="atribuicoes.length; $el.value = t.atribuicao_id || ''"
-                        @change="atualizarTransacao(t.id, 'atribuicao_id', $event.target.value || null)"
+                <select @change="atualizarTransacao(t.id, 'atribuicao_id', $event.target.value || null)"
                         class="bg-transparent border-0 hover:bg-zinc-800 px-1 py-0.5 rounded text-xs cursor-pointer w-full"
                         :class="!t.atribuicao_id ? 'text-amber-500' : (t.atribuicao_origem === 'manual' ? 'text-zinc-100' : 'text-zinc-400')">
-                  <option value="">— sem atribuição —</option>
+                  <option value="" :selected="!t.atribuicao_id">— sem atribuição —</option>
                   <template x-for="a in atribuicoes" :key="a.id">
-                    <option :value="a.id" x-text="a.nome + ' (' + a.tipo + ')'"></option>
+                    <option :value="a.id" :selected="a.id == t.atribuicao_id" x-text="a.nome + ' (' + a.tipo + ')'"></option>
                   </template>
                 </select>
               </td>
