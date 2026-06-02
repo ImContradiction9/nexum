@@ -249,6 +249,9 @@ function financeiro() {
     cambioStatus: null,
     sincronizandoCambio: false,
     cambioManual: '',
+    atualizandoTudo: false,
+    cambioModalAberto: false,
+    cambioManualEdit: { USD: '', EUR: '' },
     tiposAtivo: [],
     moedasAtivo: ['BRL', 'USD', 'EUR', 'GBP'],
     ativoExpandido: null,
@@ -2163,48 +2166,56 @@ function financeiro() {
       }
     },
 
-    async sincronizarCambio() {
-      this.sincronizandoCambio = true;
+    // Atualiza CDI + dólar + euro de uma vez (tudo do Banco Central).
+    async atualizarTudo() {
+      this.atualizandoTudo = true;
       try {
-        const r = await fetch('/api/cambio/sincronizar', { method: 'POST' });
-        const data = await r.json();
-        if (data.ok) {
-          this.cambioStatus = data.status;
-          this.notificar('Cotação do dólar atualizada', 'ok');
-          await this.carregarInvestimentos();
+        const [cdi, cambio] = await Promise.all([
+          fetch('/api/investimentos/cdi/sincronizar', { method: 'POST' }).then(r => r.json()).catch(() => null),
+          fetch('/api/cambio/sincronizar', { method: 'POST' }).then(r => r.json()).catch(() => null),
+        ]);
+        if (cdi && cdi.status) this.cdiStatus = cdi.status;
+        if (cambio && cambio.status) this.cambioStatus = cambio.status;
+        if ((cdi && cdi.ok) || (cambio && cambio.ok)) {
+          this.notificar('CDI, dólar e euro atualizados', 'ok');
         } else {
-          this.notificar('Não consegui buscar o dólar no Banco Central agora.', 'erro');
+          this.notificar('Não consegui falar com o Banco Central agora. Tente mais tarde.', 'erro');
         }
+        await this.carregarInvestimentos();
       } catch (e) {
-        this.notificar('Erro ao atualizar o câmbio', 'erro');
+        this.notificar('Erro ao atualizar', 'erro');
       } finally {
-        this.sincronizandoCambio = false;
+        this.atualizandoTudo = false;
       }
     },
 
-    async salvarCambioManual() {
-      const v = parseFloat(String(this.cambioManual).replace(',', '.'));
-      if (!v || v <= 0) { this.notificar('Informe uma cotação válida (ex: 5,04)', 'erro'); return; }
-      try {
-        this.cambioStatus = await fetch('/api/cambio/manual', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ moeda: 'USD', valor: v }),
-        }).then(r => r.json());
-        this.cambioManual = '';
-        this.notificar(`Dólar fixado em R$ ${v.toFixed(4)}`, 'ok');
-        await this.carregarInvestimentos();
-      } catch (e) { this.notificar('Erro ao fixar o câmbio', 'erro'); }
+    abrirCambioManual() {
+      const m = (this.cambioStatus && this.cambioStatus.moedas) || {};
+      this.cambioManualEdit = {
+        USD: (m.USD && m.USD.manual != null) ? String(m.USD.manual) : '',
+        EUR: (m.EUR && m.EUR.manual != null) ? String(m.EUR.manual) : '',
+      };
+      this.cambioModalAberto = true;
     },
 
-    async limparCambioManual() {
-      try {
-        this.cambioStatus = await fetch('/api/cambio/manual', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ moeda: 'USD', valor: '' }),
-        }).then(r => r.json());
-        this.notificar('Voltou pra cotação automática do BCB', 'ok');
-        await this.carregarInvestimentos();
-      } catch (e) { this.notificar('Erro ao limpar o câmbio manual', 'erro'); }
+    async salvarCambioManualModal() {
+      for (const moeda of ['USD', 'EUR']) {
+        const raw = String(this.cambioManualEdit[moeda] || '').replace(',', '.').trim();
+        let valor = '';                         // vazio = limpa o manual (volta ao BCB)
+        if (raw !== '') {
+          valor = parseFloat(raw);
+          if (!(valor > 0)) { this.notificar(`Cotação inválida para ${moeda}`, 'erro'); return; }
+        }
+        try {
+          this.cambioStatus = await fetch('/api/cambio/manual', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ moeda, valor }),
+          }).then(r => r.json());
+        } catch (e) { this.notificar('Erro ao salvar a cotação manual', 'erro'); return; }
+      }
+      this.cambioModalAberto = false;
+      this.notificar('Cotações salvas', 'ok');
+      await this.carregarInvestimentos();
     },
 
     async carregarOperacoes(ativoId) {

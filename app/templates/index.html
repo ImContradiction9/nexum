@@ -937,44 +937,56 @@
       </button>
     </div>
 
-    <!-- Status do CDI (renda fixa indexada) -->
-    <div x-show="cdiStatus" class="flex items-center gap-3 text-xs text-zinc-500 mb-6">
-      <span>CDI
-        <span class="text-zinc-300" x-text="(cdiStatus && cdiStatus.cdi_anual != null ? cdiStatus.cdi_anual.toFixed(2) : '—') + '% a.a.'"></span>
+    <!-- Indicadores: CDI + câmbio (dólar/euro), com uma atualização só -->
+    <div x-show="cdiStatus || cambioStatus" x-cloak
+         class="flex items-center gap-x-4 gap-y-1 flex-wrap text-xs text-zinc-500 mb-6">
+      <span>CDI <span class="text-zinc-300" x-text="(cdiStatus && cdiStatus.cdi_anual != null ? cdiStatus.cdi_anual.toFixed(2) : '—') + '% a.a.'"></span></span>
+      <span class="text-zinc-700">·</span>
+      <span>Dólar
+        <span class="text-zinc-300" x-text="(cambioStatus && cambioStatus.moedas && cambioStatus.moedas.USD && cambioStatus.moedas.USD.usado != null) ? ('R$ ' + cambioStatus.moedas.USD.usado.toFixed(4)) : '—'"></span>
+        <span x-show="cambioStatus && cambioStatus.moedas && cambioStatus.moedas.USD && cambioStatus.moedas.USD.manual" class="text-amber-500">(manual)</span>
       </span>
-      <span x-show="cdiStatus && cdiStatus.ultima_data" class="text-zinc-600">·</span>
-      <span x-show="cdiStatus && cdiStatus.ultima_data">
-        atualizado até <span x-text="cdiStatus ? formatarData(cdiStatus.ultima_data) : ''"></span>
+      <span class="text-zinc-700">·</span>
+      <span>Euro
+        <span class="text-zinc-300" x-text="(cambioStatus && cambioStatus.moedas && cambioStatus.moedas.EUR && cambioStatus.moedas.EUR.usado != null) ? ('R$ ' + cambioStatus.moedas.EUR.usado.toFixed(4)) : '—'"></span>
+        <span x-show="cambioStatus && cambioStatus.moedas && cambioStatus.moedas.EUR && cambioStatus.moedas.EUR.manual" class="text-amber-500">(manual)</span>
       </span>
-      <button @click="sincronizarCDI()" :disabled="sincronizandoCDI"
-              class="text-amber-600 hover:text-amber-400 uppercase tracking-wider disabled:opacity-50">
-        <span x-text="sincronizandoCDI ? 'sincronizando…' : 'atualizar'"></span>
+      <button @click="atualizarTudo()" :disabled="atualizandoTudo"
+              class="text-emerald-600 hover:text-emerald-400 uppercase tracking-wider disabled:opacity-50">
+        <span x-text="atualizandoTudo ? 'atualizando…' : 'atualizar tudo'"></span>
       </button>
+      <button @click="abrirCambioManual()"
+              class="text-zinc-500 hover:text-zinc-300 uppercase tracking-wider">cotação manual</button>
     </div>
 
-    <!-- Câmbio do dólar (conversão dos ativos em US$ para R$) -->
-    <div x-show="cambioStatus && cambioStatus.moedas && cambioStatus.moedas.USD"
-         class="flex items-center gap-3 text-xs text-zinc-500 mb-6" x-cloak>
-      <span>Dólar
-        <span class="text-zinc-300"
-              x-text="cambioStatus && cambioStatus.moedas.USD.usado != null ? ('R$ ' + cambioStatus.moedas.USD.usado.toFixed(4)) : '—'"></span>
-      </span>
-      <span x-show="cambioStatus && cambioStatus.moedas.USD.manual" class="text-amber-500">(manual)</span>
-      <span x-show="cambioStatus && cambioStatus.moedas.USD.data_bcb && !cambioStatus.moedas.USD.manual" class="text-zinc-600">·</span>
-      <span x-show="cambioStatus && cambioStatus.moedas.USD.data_bcb && !cambioStatus.moedas.USD.manual">
-        BCB <span x-text="cambioStatus ? cambioStatus.moedas.USD.data_bcb : ''"></span>
-      </span>
-      <button @click="sincronizarCambio()" :disabled="sincronizandoCambio"
-              class="text-emerald-600 hover:text-emerald-400 uppercase tracking-wider disabled:opacity-50">
-        <span x-text="sincronizandoCambio ? 'sincronizando…' : 'atualizar'"></span>
-      </button>
-      <span class="text-zinc-700">|</span>
-      <input type="number" step="0.0001" min="0" x-model="cambioManual" placeholder="cotação manual"
-             class="w-28 bg-zinc-900 border border-zinc-800 px-2 py-1 rounded text-zinc-300">
-      <button @click="salvarCambioManual()"
-              class="text-zinc-400 hover:text-zinc-200 uppercase tracking-wider">fixar</button>
-      <button x-show="cambioStatus && cambioStatus.moedas.USD.manual" @click="limparCambioManual()"
-              class="text-zinc-600 hover:text-zinc-400 uppercase tracking-wider">limpar</button>
+    <!-- Modal: cotação manual (dólar/euro) -->
+    <div x-show="cambioModalAberto" x-cloak @keydown.escape.window="cambioModalAberto=false"
+         class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4" @click.self="cambioModalAberto=false">
+      <div class="bg-zinc-900 border border-zinc-800 rounded-lg p-6 w-full max-w-md">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="font-serif text-lg">Cotação manual</h3>
+          <button @click="cambioModalAberto=false" class="text-zinc-500 hover:text-zinc-300 text-lg">✕</button>
+        </div>
+        <p class="text-xs text-zinc-500 mb-4">
+          Fixe uma cotação (sobrepõe a do Banco Central). Deixe o campo <strong>vazio</strong> e salve pra voltar ao automático.
+        </p>
+        <template x-for="m in ['USD','EUR']" :key="m">
+          <div class="flex items-center gap-3 mb-3">
+            <span class="w-12 text-sm text-zinc-300" x-text="m === 'USD' ? 'Dólar' : 'Euro'"></span>
+            <input type="number" step="0.0001" min="0" x-model="cambioManualEdit[m]"
+                   :placeholder="'auto (BCB): ' + ((cambioStatus && cambioStatus.moedas && cambioStatus.moedas[m] && cambioStatus.moedas[m].auto != null) ? cambioStatus.moedas[m].auto.toFixed(4) : '—')"
+                   class="flex-1 bg-zinc-950 border border-zinc-800 px-3 py-2 rounded text-sm font-mono text-zinc-200">
+            <span class="text-[11px] w-14 text-right"
+                  :class="(cambioStatus && cambioStatus.moedas && cambioStatus.moedas[m] && cambioStatus.moedas[m].manual) ? 'text-amber-500' : 'text-zinc-600'"
+                  x-text="(cambioStatus && cambioStatus.moedas && cambioStatus.moedas[m] && cambioStatus.moedas[m].manual) ? 'manual' : 'auto'"></span>
+          </div>
+        </template>
+        <div class="flex justify-end gap-2 mt-5">
+          <button @click="cambioModalAberto=false" class="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200">Cancelar</button>
+          <button @click="salvarCambioManualModal()"
+                  class="bg-amber-500 hover:bg-amber-400 text-zinc-950 px-4 py-2 text-sm font-medium rounded">Salvar</button>
+        </div>
+      </div>
     </div>
 
     <!-- Resumo da carteira -->

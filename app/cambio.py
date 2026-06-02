@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 from .database import Configuracao
 
 # Séries SGS do BCB (taxa de câmbio de venda, diária). Extensível.
-_SERIES = {"USD": 1}  # USD/BRL. (EUR/GBP podem ser adicionados com seus códigos.)
+_SERIES = {"USD": 1, "EUR": 21619}  # USD/BRL (série 1), EUR/BRL (série 21619, venda).
 
 _BCB_ULTIMO = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.{serie}/dados/ultimos/1?formato=json"
 _CONFIG_SYNC = "cambio_sync_em"
