@@ -100,7 +100,7 @@
             <path d="M21 12a9 9 0 11-3-6.7L21 8"/>
             <path d="M21 3v5h-5"/>
           </svg>
-          <span class="text-xs tracking-wider">Atualizar</span>
+          <span class="text-xs tracking-wider font-bold">Atualizar</span>
         </button>
         <label class="bg-amber-500 hover:bg-amber-400 text-zinc-950 px-4 py-1.5 text-sm font-medium rounded cursor-pointer transition">
           Importar arquivo
@@ -128,7 +128,7 @@
       <select x-model="dashboard.mes"
               @change="periodoPreset = 'mes'; carregarDashboard()"
               :class="periodoPreset === 'mes' ? 'bg-amber-500 text-zinc-950 border-amber-500 font-medium' : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:border-zinc-700'"
-              class="appearance-none px-3 py-1.5 text-xs rounded border transition font-mono cursor-pointer focus:outline-none focus:ring-0"
+              class="appearance-none pl-3 pr-8 py-1.5 text-xs rounded border transition font-mono cursor-pointer focus:outline-none focus:ring-0"
               style="background-image: none;">
         <template x-for="m in dashboard.meses_disponiveis" :key="m"><option :value="m" x-text="m"></option></template>
       </select>
@@ -346,7 +346,7 @@
         <div class="flex items-center justify-between mb-4 gap-3">
           <h2 class="font-serif text-lg text-zinc-300" x-text="tituloGraficoAtual()"></h2>
           <select :value="tipoGrafico" @change="trocarTipoGrafico($event.target.value)"
-                  class="bg-zinc-900 border border-zinc-800 text-zinc-400 text-xs rounded px-2 py-1.5 focus:border-amber-700 focus:outline-none cursor-pointer">
+                  class="bg-zinc-900 border border-zinc-800 text-zinc-400 text-xs rounded pl-2 pr-8 py-1.5 focus:border-amber-700 focus:outline-none cursor-pointer">
             <template x-for="o in opcoesGrafico" :key="o.id">
               <option :value="o.id" x-text="o.nome"></option>
             </template>
@@ -531,15 +531,15 @@
     <div class="flex items-center gap-3 mb-6 flex-wrap">
       <input type="text" placeholder="Buscar descrição..." x-model="filtros.busca" @input.debounce.300ms="carregarTransacoes()"
              class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-72">
-      <select x-model="filtros.mes" @change="carregarTransacoes()" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded font-mono">
+      <select x-model="filtros.mes" @change="carregarTransacoes()" class="bg-zinc-900 border border-zinc-800 pl-3 pr-8 py-2 text-sm rounded font-mono">
         <option value="">Todos os meses</option>
         <template x-for="m in dashboard.meses_disponiveis"><option :value="m" x-text="m"></option></template>
       </select>
-      <select x-model="filtros.banco_id" @change="carregarTransacoes()" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded">
+      <select x-model="filtros.banco_id" @change="carregarTransacoes()" class="bg-zinc-900 border border-zinc-800 pl-3 pr-8 py-2 text-sm rounded">
         <option value="">Todos os bancos</option>
         <template x-for="b in bancos"><option :value="b.id" x-text="b.nome"></option></template>
       </select>
-      <select x-model="filtros.tipo_conta" @change="carregarTransacoes()" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded">
+      <select x-model="filtros.tipo_conta" @change="carregarTransacoes()" class="bg-zinc-900 border border-zinc-800 pl-3 pr-8 py-2 text-sm rounded">
         <option value="">Todos os tipos</option>
         <option value="Conta Corrente">Conta Corrente</option>
         <option value="Conta Poupança">Conta Poupança</option>
@@ -547,11 +547,11 @@
         <option value="Carteira">Carteira</option>
         <option value="Investimento">Investimento</option>
       </select>
-      <select x-model="filtros.categoria_id" @change="carregarTransacoes()" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded">
+      <select x-model="filtros.categoria_id" @change="carregarTransacoes()" class="bg-zinc-900 border border-zinc-800 pl-3 pr-8 py-2 text-sm rounded">
         <option value="">Todas as categorias</option>
         <template x-for="c in categorias"><option :value="c.id" x-text="c.nome"></option></template>
       </select>
-      <select x-model="filtros.atribuicao_id" @change="carregarTransacoes()" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded">
+      <select x-model="filtros.atribuicao_id" @change="carregarTransacoes()" class="bg-zinc-900 border border-zinc-800 pl-3 pr-8 py-2 text-sm rounded">
         <option value="">Todas as atribuições</option>
         <template x-for="a in atribuicoes"><option :value="a.id" x-text="a.nome"></option></template>
       </select>
@@ -637,7 +637,7 @@
       </label>
       <select x-model="bulkForm.categoria_id"
               :disabled="!bulkForm.aplicar_categoria"
-              class="bg-zinc-900 border border-zinc-800 px-2 py-1 text-xs rounded disabled:opacity-40">
+              class="bg-zinc-900 border border-zinc-800 pl-2 pr-8 py-1 text-xs rounded disabled:opacity-40">
         <option value="">— sem categoria —</option>
         <template x-for="c in categorias" :key="c.id">
           <option :value="c.id" x-text="c.nome"></option>
@@ -650,7 +650,7 @@
       </label>
       <select x-model="bulkForm.atribuicao_id"
               :disabled="!bulkForm.aplicar_atribuicao"
-              class="bg-zinc-900 border border-zinc-800 px-2 py-1 text-xs rounded disabled:opacity-40">
+              class="bg-zinc-900 border border-zinc-800 pl-2 pr-8 py-1 text-xs rounded disabled:opacity-40">
         <option value="">— sem atribuição —</option>
         <template x-for="a in atribuicoes" :key="a.id">
           <option :value="a.id" x-text="a.nome"></option>
@@ -814,7 +814,7 @@
     <!-- Seletor de conta + mês -->
     <div x-show="contasExtrato.length > 0" class="flex items-center gap-3 mb-6 flex-wrap">
       <select x-model="extrato.conta_id" @change="carregarExtrato()"
-              class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded">
+              class="bg-zinc-900 border border-zinc-800 pl-3 pr-8 py-2 text-sm rounded">
         <option value="">— Selecione uma conta —</option>
         <template x-for="c in contasExtrato" :key="c.id">
           <option :value="c.id"
@@ -1025,10 +1025,10 @@
                class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded font-mono">
       </div>
       <div class="grid grid-cols-3 gap-3 mb-3">
-        <select x-model="ativoForm.tipo" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded">
+        <select x-model="ativoForm.tipo" class="bg-zinc-900 border border-zinc-800 pl-3 pr-8 py-2 text-sm rounded">
           <template x-for="t in tiposAtivo"><option :value="t" x-text="t"></option></template>
         </select>
-        <select x-model="ativoForm.moeda" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded">
+        <select x-model="ativoForm.moeda" class="bg-zinc-900 border border-zinc-800 pl-3 pr-8 py-2 text-sm rounded">
           <template x-for="m in moedasAtivo"><option :value="m" x-text="m"></option></template>
         </select>
         <input type="text" placeholder="Instituição (ex: Avenue, BB)"
@@ -1095,7 +1095,7 @@
     <div x-show="ativos.length > 1" class="flex items-center gap-2 mb-3 text-xs">
       <span class="text-zinc-600 tracking-wider">Ordenar por</span>
       <select x-model="ordemInvest"
-              class="bg-zinc-900 border border-zinc-800 rounded px-2 py-1 text-zinc-300">
+              class="bg-zinc-900 border border-zinc-800 rounded pl-2 pr-8 py-1 text-zinc-300">
         <option value="valor">Maior posição (R$)</option>
         <option value="rentab">Rentabilidade</option>
         <option value="data">Data de aquisição</option>
@@ -1228,7 +1228,7 @@
                 <div>
                   <label class="block text-xs text-zinc-500 mb-1">Moeda da operação</label>
                   <select x-model="opForm.moeda_operacao"
-                          class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full">
+                          class="bg-zinc-900 border border-zinc-800 pl-3 pr-8 py-2 text-sm rounded w-full">
                     <template x-for="m in moedasAtivo"><option :value="m" x-text="m"></option></template>
                   </select>
                 </div>
@@ -1404,7 +1404,8 @@
 
             <div x-show="m.ritmo_mensal_estimado > 0"
                  class="bg-zinc-950/60 border border-zinc-800/60 rounded px-3 py-2">
-              <div class="text-zinc-500 tracking-wider text-[10px] mb-0.5">Ritmo atual (90d)</div>
+              <div class="text-zinc-500 tracking-wider text-[10px] mb-0.5"
+                   title="Média mensal de aportes desde o primeiro investimento deste escopo">Ritmo atual</div>
               <div class="font-mono text-zinc-200" x-text="formatarBRL(m.ritmo_mensal_estimado) + '/mês'"></div>
             </div>
 
@@ -1554,7 +1555,7 @@
           <div>
             <label class="block text-xs tracking-wider text-zinc-500 mb-1.5">Meta-mãe (opcional)</label>
             <select x-model="metaModal.meta_pai_id"
-                    class="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-2 focus:border-amber-700 focus:outline-none">
+                    class="w-full bg-zinc-950 border border-zinc-800 rounded pl-3 pr-8 py-2 focus:border-amber-700 focus:outline-none">
               <option value="">— Sem meta-mãe (raiz)</option>
               <template x-for="m in metasFlat" :key="m.id">
                 <option :value="m.id" :disabled="m.id === metaModal.editando_id" x-text="m.nome"></option>
@@ -1714,14 +1715,14 @@
         <div class="grid grid-cols-3 gap-3 mb-3">
           <input type="text" placeholder="Nome (ex: Itaú Crédito)" x-model="contaForm.nome"
                  class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded">
-          <select x-model="contaForm.tipo" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded">
+          <select x-model="contaForm.tipo" class="bg-zinc-900 border border-zinc-800 pl-3 pr-8 py-2 text-sm rounded">
             <option value="Cartão de Crédito">Cartão de Crédito</option>
             <option value="Conta Corrente">Conta Corrente</option>
             <option value="Conta Poupança">Conta Poupança</option>
             <option value="Carteira">Carteira (dinheiro)</option>
             <option value="Investimento">Investimento</option>
           </select>
-          <select x-model="contaForm.banco_id" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded">
+          <select x-model="contaForm.banco_id" class="bg-zinc-900 border border-zinc-800 pl-3 pr-8 py-2 text-sm rounded">
             <option value="">— Banco —</option>
             <template x-for="b in bancos"><option :value="b.id" x-text="b.nome"></option></template>
           </select>
@@ -1903,7 +1904,7 @@
                class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded text-center">
         <input type="text" placeholder="Nome" x-model="categoriaForm.nome"
                class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded col-span-2">
-        <select x-model="categoriaForm.tipo" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded">
+        <select x-model="categoriaForm.tipo" class="bg-zinc-900 border border-zinc-800 pl-3 pr-8 py-2 text-sm rounded">
           <option value="Despesa">Despesa</option>
           <option value="Receita">Receita</option>
         </select>
@@ -1967,7 +1968,7 @@
            class="border border-amber-900/50 bg-amber-950/10 rounded-lg p-4 mb-4 grid grid-cols-5 gap-3">
         <input type="text" placeholder="Nome" x-model="atribuicaoForm.nome"
                class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded col-span-2">
-        <select x-model="atribuicaoForm.tipo" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded">
+        <select x-model="atribuicaoForm.tipo" class="bg-zinc-900 border border-zinc-800 pl-3 pr-8 py-2 text-sm rounded">
           <option value="Pessoa">Pessoa</option>
           <option value="Grupo">Grupo</option>
         </select>
@@ -2024,11 +2025,11 @@
       <div x-show="editandoRegra" class="border border-amber-900/50 bg-amber-950/20 rounded-lg p-4 mb-4 grid grid-cols-5 gap-3">
         <input type="text" placeholder="palavra-chave (ex: IFOOD)" x-model="regraForm.palavra_chave"
                class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded col-span-2">
-        <select x-model="regraForm.categoria_id" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded">
+        <select x-model="regraForm.categoria_id" class="bg-zinc-900 border border-zinc-800 pl-3 pr-8 py-2 text-sm rounded">
           <option value="">— categoria —</option>
           <template x-for="c in categorias"><option :value="c.id" x-text="c.nome"></option></template>
         </select>
-        <select x-model="regraForm.atribuicao_id" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded">
+        <select x-model="regraForm.atribuicao_id" class="bg-zinc-900 border border-zinc-800 pl-3 pr-8 py-2 text-sm rounded">
           <option value="">— atribuição (opcional) —</option>
           <template x-for="a in atribuicoes"><option :value="a.id" x-text="a.nome"></option></template>
         </select>
@@ -2091,7 +2092,7 @@
               <span class="text-zinc-600">— clique numa célula vazia pra marcar o início de uso da conta</span>
             </p>
           </div>
-          <select x-model="cobertura.meses_n" @change="carregarCobertura()" class="bg-zinc-900 border border-zinc-800 px-3 py-1.5 text-xs rounded">
+          <select x-model="cobertura.meses_n" @change="carregarCobertura()" class="bg-zinc-900 border border-zinc-800 pl-3 pr-8 py-1.5 text-xs rounded">
             <option value="6">Últimos 6 meses</option>
             <option value="12">Últimos 12 meses</option>
             <option value="24">Últimos 24 meses</option>
@@ -2156,20 +2157,20 @@
         <input type="text" placeholder="Buscar por nome do arquivo..."
                x-model="filtrosFaturas.busca"
                class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded flex-1 min-w-[200px]">
-        <select x-model="filtrosFaturas.banco" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded">
+        <select x-model="filtrosFaturas.banco" class="bg-zinc-900 border border-zinc-800 pl-3 pr-8 py-2 text-sm rounded">
           <option value="">Todos os bancos</option>
           <template x-for="b in bancosUnicosDeFaturas()"><option :value="b" x-text="b"></option></template>
         </select>
-        <select x-model="filtrosFaturas.titular" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded">
+        <select x-model="filtrosFaturas.titular" class="bg-zinc-900 border border-zinc-800 pl-3 pr-8 py-2 text-sm rounded">
           <option value="">Todos os titulares</option>
           <template x-for="t in titularesUnicosDeFaturas()"><option :value="t" x-text="t"></option></template>
         </select>
-        <select x-model="filtrosFaturas.tipo_conta" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded">
+        <select x-model="filtrosFaturas.tipo_conta" class="bg-zinc-900 border border-zinc-800 pl-3 pr-8 py-2 text-sm rounded">
           <option value="">Todos os tipos</option>
           <option value="Cartão de Crédito">Cartão de Crédito</option>
           <option value="Conta Corrente">Conta Corrente</option>
         </select>
-        <select x-model="filtrosFaturas.mes" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded font-mono">
+        <select x-model="filtrosFaturas.mes" class="bg-zinc-900 border border-zinc-800 pl-3 pr-8 py-2 text-sm rounded font-mono">
           <option value="">Todos os meses</option>
           <template x-for="m in mesesUnicosDeFaturas()"><option :value="m" x-text="m"></option></template>
         </select>
@@ -2377,7 +2378,7 @@
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="block text-xs tracking-wider text-zinc-500 mb-1.5">Tipo</label>
-            <select x-model="editCategoriaForm.tipo" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full">
+            <select x-model="editCategoriaForm.tipo" class="bg-zinc-900 border border-zinc-800 pl-3 pr-8 py-2 text-sm rounded w-full">
               <option value="Despesa">Despesa</option>
               <option value="Receita">Receita</option>
             </select>
@@ -2420,7 +2421,7 @@
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="block text-xs tracking-wider text-zinc-500 mb-1.5">Tipo</label>
-            <select x-model="editAtribuicaoForm.tipo" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full">
+            <select x-model="editAtribuicaoForm.tipo" class="bg-zinc-900 border border-zinc-800 pl-3 pr-8 py-2 text-sm rounded w-full">
               <option value="Pessoa">Pessoa</option>
               <option value="Grupo">Grupo</option>
             </select>
@@ -2534,7 +2535,7 @@
           </div>
           <div>
             <label class="block text-xs tracking-wider text-zinc-500 mb-1.5">Tipo</label>
-            <select x-model="novaTransacaoForm.tipo" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full">
+            <select x-model="novaTransacaoForm.tipo" class="bg-zinc-900 border border-zinc-800 pl-3 pr-8 py-2 text-sm rounded w-full">
               <option value="Despesa">Despesa</option>
               <option value="Receita">Receita</option>
             </select>
@@ -2556,7 +2557,7 @@
           </div>
           <div>
             <label class="block text-xs tracking-wider text-zinc-500 mb-1.5">Conta</label>
-            <select x-model="novaTransacaoForm.conta_id" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full">
+            <select x-model="novaTransacaoForm.conta_id" class="bg-zinc-900 border border-zinc-800 pl-3 pr-8 py-2 text-sm rounded w-full">
               <option value="">— escolha —</option>
               <template x-for="c in contas" :key="c.id">
                 <option :value="c.id" x-text="c.nome + ' (' + c.tipo + ')'"></option>
@@ -2568,7 +2569,7 @@
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="block text-xs tracking-wider text-zinc-500 mb-1.5">Categoria</label>
-            <select x-model="novaTransacaoForm.categoria_id" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full">
+            <select x-model="novaTransacaoForm.categoria_id" class="bg-zinc-900 border border-zinc-800 pl-3 pr-8 py-2 text-sm rounded w-full">
               <option value="">— auto —</option>
               <template x-for="c in categorias" :key="c.id">
                 <option :value="c.id" x-text="c.nome"></option>
@@ -2577,7 +2578,7 @@
           </div>
           <div>
             <label class="block text-xs tracking-wider text-zinc-500 mb-1.5">Atribuição</label>
-            <select x-model="novaTransacaoForm.atribuicao_id" class="bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm rounded w-full">
+            <select x-model="novaTransacaoForm.atribuicao_id" class="bg-zinc-900 border border-zinc-800 pl-3 pr-8 py-2 text-sm rounded w-full">
               <option value="">— sem —</option>
               <template x-for="a in atribuicoes" :key="a.id">
                 <option :value="a.id" x-text="a.nome"></option>

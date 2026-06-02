@@ -31,8 +31,8 @@ def _calcular_saldos_brl(db: Session):
     Calcula, em BRL, o saldo atual de cada ativo da carteira e devolve:
       total_brl        — soma de tudo
       por_tipo         — {tipo: saldo_brl}
-      ritmo_mensal_brl — média mensal de aportes nos últimos 90 dias (em BRL)
-      ritmo_por_tipo   — {tipo: aporte_mensal_brl} mesmos 90 dias
+      ritmo_mensal_brl — média mensal de aportes desde o 1º aporte (em BRL)
+      ritmo_por_tipo   — {tipo: aporte_mensal_brl} desde o 1º aporte do tipo
     Reaproveita a lógica de /api/investimentos/resumo (último câmbio registrado).
 
     Também devolve a taxa de retorno anual esperada (fração) ponderada pelo
@@ -107,30 +107,41 @@ def _calcular_saldos_brl(db: Session):
         retorno_pond_total += atual_brl * taxa_ativo
         retorno_pond_liq_total += atual_brl * taxa_ativo_liq
 
-    # Ritmo de aporte: compras + aportes dos últimos 90 dias.
+    # Ritmo de aporte: média mensal desde o PRIMEIRO aporte de cada escopo
+    # (não uma janela fixa de 90 dias). Assim o "ritmo atual" reflete o
+    # histórico real: total de compras+aportes ÷ meses desde o 1º aporte.
     hoje = date.today()
-    desde = hoje - timedelta(days=90)
-    ritmo_total = 0.0
-    ritmo_por_tipo = {}
-    ritmo_por_ativo = {}
+    soma_total = 0.0
+    soma_por_tipo = {}
+    soma_por_ativo = {}
+    primeira_total = None
+    primeira_por_tipo = {}
+    primeira_por_ativo = {}
     for op in todas_ops:
-        if op.tipo not in ("Compra", "Aporte"):
-            continue
-        if op.data < desde:
+        if op.tipo not in ("Compra", "Aporte") or not op.data:
             continue
         a = ativo_por_id.get(op.ativo_id)
         if not a:
             continue
         cambio = op.cotacao_cambio if op.cotacao_cambio else 1.0
         valor_brl = (op.valor_total or 0) * (cambio if a.moeda != "BRL" else 1)
-        ritmo_total += valor_brl
-        ritmo_por_tipo[a.tipo] = ritmo_por_tipo.get(a.tipo, 0.0) + valor_brl
-        ritmo_por_ativo[op.ativo_id] = ritmo_por_ativo.get(op.ativo_id, 0.0) + valor_brl
+        soma_total += valor_brl
+        soma_por_tipo[a.tipo] = soma_por_tipo.get(a.tipo, 0.0) + valor_brl
+        soma_por_ativo[op.ativo_id] = soma_por_ativo.get(op.ativo_id, 0.0) + valor_brl
+        if primeira_total is None or op.data < primeira_total:
+            primeira_total = op.data
+        if a.tipo not in primeira_por_tipo or op.data < primeira_por_tipo[a.tipo]:
+            primeira_por_tipo[a.tipo] = op.data
+        if op.ativo_id not in primeira_por_ativo or op.data < primeira_por_ativo[op.ativo_id]:
+            primeira_por_ativo[op.ativo_id] = op.data
 
-    # Média mensal (90 dias ≈ 3 meses).
-    ritmo_mensal_brl = ritmo_total / 3.0
-    ritmo_por_tipo_mensal = {k: v / 3.0 for k, v in ritmo_por_tipo.items()}
-    ritmo_por_ativo_mensal = {k: v / 3.0 for k, v in ritmo_por_ativo.items()}
+    def _meses_desde(d):
+        # Meses decorridos desde a data (mínimo 1 mês, p/ início recente não estourar).
+        return max((hoje - d).days / 30.44, 1.0) if d else 1.0
+
+    ritmo_mensal_brl = (soma_total / _meses_desde(primeira_total)) if primeira_total else 0.0
+    ritmo_por_tipo_mensal = {t: v / _meses_desde(primeira_por_tipo.get(t)) for t, v in soma_por_tipo.items()}
+    ritmo_por_ativo_mensal = {i: v / _meses_desde(primeira_por_ativo.get(i)) for i, v in soma_por_ativo.items()}
 
     taxa_anual_por_tipo = {
         t: (retorno_pond_por_tipo[t] / peso_por_tipo[t]) if peso_por_tipo.get(t) else 0.0
