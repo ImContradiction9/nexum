@@ -131,7 +131,7 @@
       <select x-model="dashboard.mes"
               @change="periodoPreset = 'mes'; carregarDashboard()"
               :class="periodoPreset === 'mes' ? 'bg-amber-500 text-zinc-950 border-amber-500 font-medium' : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:border-zinc-700'"
-              class="appearance-none pl-3 pr-8 py-1.5 text-xs rounded border transition font-mono cursor-pointer focus:outline-none focus:ring-0"
+              class="appearance-none px-3 py-1.5 text-xs rounded border transition font-mono cursor-pointer focus:outline-none focus:ring-0"
               style="background-image: none;">
         <template x-for="m in dashboard.meses_disponiveis" :key="m"><option :value="m" x-text="m"></option></template>
       </select>
