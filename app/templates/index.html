@@ -87,6 +87,9 @@
           <button @click="view='metas'; carregarMetas()"
                   :class="view==='metas' ? 'text-amber-500' : 'text-zinc-500 hover:text-zinc-200'"
                   class="px-3 py-1 transition">Metas</button>
+          <button @click="view='orcamento'; carregarOrcamentos()"
+                  :class="view==='orcamento' ? 'text-amber-500' : 'text-zinc-500 hover:text-zinc-200'"
+                  class="px-3 py-1 transition">Orçamento</button>
           <button @click="view='config'; subView='contas'; carregarContas()"
                   :class="view==='config' ? 'text-amber-500' : 'text-zinc-500 hover:text-zinc-200'"
                   class="px-3 py-1 transition">Configurações</button>
@@ -210,40 +213,6 @@
           <span x-text="'vs ' + brl(dashboard.saldo_anterior) + (dashboard.modo_periodo ? ' (período anterior)' : ' em ' + dashboard.mes_anterior)"></span>
         </div>
       </div>
-      </div>
-    </div>
-
-    <!-- Orçamento do mês por categoria -->
-    <div x-show="orcamentos.itens && orcamentos.itens.length > 0" class="border border-zinc-800 rounded-lg p-5 mb-6">
-      <div class="flex items-baseline justify-between mb-4">
-        <span class="text-xs tracking-widest text-zinc-500">Orçamento do mês</span>
-        <span class="text-xs font-mono text-zinc-500">
-          <span x-text="brl(orcamentos.total_gasto)"></span> /
-          <span x-text="brl(orcamentos.total_orcado)"></span>
-        </span>
-      </div>
-      <div class="grid sm:grid-cols-2 gap-x-8 gap-y-3">
-        <template x-for="o in orcamentos.itens" :key="o.id">
-          <div>
-            <div class="flex items-baseline justify-between text-sm mb-1">
-              <span class="text-zinc-300 truncate">
-                <span x-show="o.icone" x-text="o.icone" class="mr-1"></span><span x-text="o.nome"></span>
-              </span>
-              <span class="font-mono text-xs whitespace-nowrap"
-                    :class="o.estourou ? 'text-red-400' : 'text-zinc-400'">
-                <span x-text="brl(o.gasto)"></span> / <span x-text="brl(o.orcamento)"></span>
-              </span>
-            </div>
-            <div class="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-              <div class="h-full rounded-full transition-all"
-                   :class="o.pct >= 100 ? 'bg-red-500' : (o.pct >= 80 ? 'bg-amber-500' : 'bg-emerald-500')"
-                   :style="'width: ' + Math.min(o.pct, 100) + '%'"></div>
-            </div>
-            <div class="text-[11px] mt-1"
-                 :class="o.estourou ? 'text-red-400' : 'text-zinc-600'"
-                 x-text="o.estourou ? ('estourou ' + brl(-o.restante)) : ('restam ' + brl(o.restante) + ' · ' + o.pct.toFixed(0) + '%')"></div>
-          </div>
-        </template>
       </div>
     </div>
 
@@ -1740,6 +1709,79 @@
           </div>
         </div>
       </div>
+    </div>
+  </main>
+
+  <!-- ============ ORÇAMENTO ============ -->
+  <main x-show="view==='orcamento'" class="max-w-[1600px] mx-auto px-8 py-8">
+    <div class="flex items-center justify-between mb-6 flex-wrap gap-3">
+      <h2 class="text-lg tracking-wide text-zinc-300">Orçamento mensal</h2>
+      <!-- Seletor de período (mês) -->
+      <div class="flex items-center gap-2">
+        <button @click="mudarMesOrcamento(-1)"
+                class="px-2 py-1.5 text-sm rounded border border-zinc-800 bg-zinc-900 text-zinc-400 hover:border-zinc-700">‹</button>
+        <select x-model="orcamentoMes" @change="carregarOrcamentos()"
+                class="appearance-none px-3 py-1.5 text-xs rounded border border-amber-500 bg-amber-500 text-zinc-950 font-medium font-mono cursor-pointer focus:outline-none"
+                style="background-image: none;">
+          <template x-if="orcamentoMes && !dashboard.meses_disponiveis.includes(orcamentoMes)">
+            <option :value="orcamentoMes" x-text="orcamentoMes"></option>
+          </template>
+          <template x-for="m in dashboard.meses_disponiveis" :key="m"><option :value="m" x-text="m"></option></template>
+        </select>
+        <button @click="mudarMesOrcamento(1)"
+                class="px-2 py-1.5 text-sm rounded border border-zinc-800 bg-zinc-900 text-zinc-400 hover:border-zinc-700">›</button>
+      </div>
+    </div>
+
+    <!-- Resumo do mês -->
+    <div x-show="orcamentos.itens && orcamentos.itens.length > 0" class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+      <div class="border border-zinc-800 rounded-lg p-4">
+        <div class="text-xs tracking-wider text-zinc-500 mb-1">Orçado</div>
+        <div class="font-serif text-2xl text-zinc-200" x-text="brl(orcamentos.total_orcado)"></div>
+      </div>
+      <div class="border border-zinc-800 rounded-lg p-4">
+        <div class="text-xs tracking-wider text-zinc-500 mb-1">Gasto</div>
+        <div class="font-serif text-2xl" :class="orcamentos.total_gasto > orcamentos.total_orcado ? 'text-red-400' : 'text-zinc-200'"
+             x-text="brl(orcamentos.total_gasto)"></div>
+      </div>
+      <div class="border border-zinc-800 rounded-lg p-4">
+        <div class="text-xs tracking-wider text-zinc-500 mb-1">Restante</div>
+        <div class="font-serif text-2xl" :class="(orcamentos.total_orcado - orcamentos.total_gasto) < 0 ? 'text-red-400' : 'text-emerald-400'"
+             x-text="brl(orcamentos.total_orcado - orcamentos.total_gasto)"></div>
+      </div>
+    </div>
+
+    <!-- Barras por categoria -->
+    <div x-show="orcamentos.itens && orcamentos.itens.length > 0" class="border border-zinc-800 rounded-lg p-5">
+      <div class="grid sm:grid-cols-2 gap-x-8 gap-y-3">
+        <template x-for="o in orcamentos.itens" :key="o.id">
+          <div>
+            <div class="flex items-baseline justify-between text-sm mb-1">
+              <span class="text-zinc-300 truncate">
+                <span x-show="o.icone" x-text="o.icone" class="mr-1"></span><span x-text="o.nome"></span>
+              </span>
+              <span class="font-mono text-xs whitespace-nowrap"
+                    :class="o.estourou ? 'text-red-400' : 'text-zinc-400'">
+                <span x-text="brl(o.gasto)"></span> / <span x-text="brl(o.orcamento)"></span>
+              </span>
+            </div>
+            <div class="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+              <div class="h-full rounded-full transition-all"
+                   :class="o.pct >= 100 ? 'bg-red-500' : (o.pct >= 80 ? 'bg-amber-500' : 'bg-emerald-500')"
+                   :style="'width: ' + Math.min(o.pct, 100) + '%'"></div>
+            </div>
+            <div class="text-[11px] mt-1"
+                 :class="o.estourou ? 'text-red-400' : 'text-zinc-600'"
+                 x-text="o.estourou ? ('estourou ' + brl(-o.restante)) : ('restam ' + brl(o.restante) + ' · ' + o.pct.toFixed(0) + '%')"></div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <!-- Vazio -->
+    <div x-show="!orcamentos.itens || orcamentos.itens.length === 0" class="text-sm text-zinc-500 border border-zinc-800 rounded-lg p-6 text-center">
+      Nenhuma categoria com orçamento definido. Defina um teto mensal em
+      <button @click="view='config'; subView='categorias'; carregarCategoriasDetalhe()" class="text-amber-500 hover:text-amber-400 underline">Configurações → Categorias</button>.
     </div>
   </main>
 

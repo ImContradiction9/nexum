@@ -30,6 +30,7 @@ function financeiro() {
     emprestimos: { pessoas: [], total_a_receber: 0, total_a_pagar: 0, sem_atribuicao: { despesa: 0, receita: 0 } },
 
     orcamentos: { itens: [], total_orcado: 0, total_gasto: 0, mes: '' },
+    orcamentoMes: '',   // mês selecionado na aba Orçamento (MM/YYYY)
 
     // Transações
     transacoes: [],
@@ -488,16 +489,32 @@ function financeiro() {
         this.emprestimos = { pessoas: [], total_a_receber: 0, total_a_pagar: 0, sem_atribuicao: { despesa: 0, receita: 0 } };
       }
 
-      // Orçamento mensal por categoria (usa o mês selecionado, se for preset 'mes')
-      try {
-        const pmes = (this.periodoPreset === 'mes' && this.dashboard.mes) ? `&mes=${encodeURIComponent(this.dashboard.mes)}` : '';
-        this.orcamentos = await fetch(`/api/orcamentos?_=${t}${pmes}`).then(r => r.json());
-      } catch (e) {
-        this.orcamentos = { itens: [], total_orcado: 0, total_gasto: 0 };
-      }
-
       // Renderiza gráficos depois que o DOM atualizar
       this.$nextTick(() => this.renderizarGraficos());
+    },
+
+    // === Orçamento (aba própria) ===
+    async carregarOrcamentos() {
+      try {
+        const pmes = this.orcamentoMes ? `&mes=${encodeURIComponent(this.orcamentoMes)}` : '';
+        const d = await fetch(`/api/orcamentos?_=${Date.now()}${pmes}`).then(r => r.json());
+        this.orcamentos = d;
+        if (d && d.mes) this.orcamentoMes = d.mes;   // sincroniza o seletor com o mês resolvido
+      } catch (e) {
+        this.orcamentos = { itens: [], total_orcado: 0, total_gasto: 0, mes: this.orcamentoMes };
+      }
+    },
+
+    // Navega meses no seletor de orçamento (delta = -1 anterior, +1 próximo).
+    mudarMesOrcamento(delta) {
+      const base = this.orcamentoMes || this.orcamentos.mes;
+      if (!base || !base.includes('/')) return;
+      let [m, y] = base.split('/').map(Number);
+      m += delta;
+      if (m < 1) { m = 12; y -= 1; }
+      else if (m > 12) { m = 1; y += 1; }
+      this.orcamentoMes = String(m).padStart(2, '0') + '/' + y;
+      this.carregarOrcamentos();
     },
 
     // Monta {labels, valores, cores, tipo} conforme o tipo de gráfico escolhido.
