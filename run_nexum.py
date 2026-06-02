@@ -351,14 +351,49 @@ def _selftest():
     os._exit(0 if ok else 1)
 
 
+def _abrir_janela_nativa(porta: int, dono: bool = True) -> bool:
+    """Abre o Nexum numa JANELA NATIVA (Edge WebView2 via pywebview) — sem
+    depender do Chrome. Bloqueia na main thread até a janela fechar.
+
+    Retorna True se a janela nativa foi usada (mesmo já fechada); False se não
+    deu pra abrir (o chamador cai pro navegador). `dono` indica se este processo
+    é o que está servindo o uvicorn (controla o encerramento).
+    """
+    try:
+        import webview
+    except Exception:
+        return False
+    url = f"http://{HOST}:{porta}"
+    try:
+        webview.create_window("Nexum", url, width=1400, height=900, min_size=(900, 600))
+        webview.start()   # bloqueia até a janela ser fechada
+    except Exception:
+        return False
+
+    # Janela fechada. Se este processo é o servidor e o compartilhamento na rede
+    # está ligado, mantém o servidor de pé (o celular ainda usa); senão encerra.
+    if dono:
+        try:
+            from app import rede as rede_mod
+            while rede_mod.compartilhando():
+                time.sleep(1)
+        except Exception:
+            pass
+        _encerrar()
+    else:
+        os._exit(0)
+    return True
+
+
 def main():
     if os.environ.get("NEXUM_SELFTEST") == "1":
         _selftest()
         return
 
-    # Se já há um Nexum rodando na porta padrão, só abre o navegador.
+    # Se já há um Nexum rodando na porta padrão, só abre a janela/navegador.
     if _nexum_ja_rodando(PORTA_PADRAO):
-        _abrir_navegador(PORTA_PADRAO)
+        if not _abrir_janela_nativa(PORTA_PADRAO, dono=False):
+            _abrir_navegador(PORTA_PADRAO)
         return
 
     porta = _porta_livre(PORTA_PADRAO)
@@ -373,11 +408,16 @@ def main():
             print("Erro: o servidor não iniciou a tempo.")
         os._exit(1)
 
-    if os.environ.get("NEXUM_NO_BROWSER") != "1":
+    # Modo headless (testes/CI): sobe o servidor e segue pela conexão SSE.
+    if os.environ.get("NEXUM_NO_BROWSER") == "1":
+        _vigia_conexoes()
+        return
+
+    # Janela nativa (WebView2) é o caminho principal. Se não der, cai pro
+    # navegador (Chrome/Edge/padrão) + vigia por conexão SSE — comportamento antigo.
+    if not _abrir_janela_nativa(porta, dono=True):
         _abrir_navegador(porta)
-    # Sem janela de controle: o servidor segue de pé enquanto a página mantiver
-    # a conexão SSE aberta; encerra sozinho quando a última janela fechar.
-    _vigia_conexoes()
+        _vigia_conexoes()
 
 
 if __name__ == "__main__":

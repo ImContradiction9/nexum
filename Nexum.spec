@@ -36,6 +36,23 @@ hiddenimports += [
     # OCR é opcional; se a lib não estiver no ambiente de build, PyInstaller ignora.
 ]
 
+# Janela nativa: pywebview (backend Edge WebView2) + pythonnet (.NET). Traz as
+# DLLs Microsoft.Web.WebView2.* e o runtime do pythonnet (Python.Runtime.dll).
+# Se faltar no ambiente de build, o app cai pro navegador em runtime.
+for pkg in ("webview", "pythonnet", "clr_loader"):
+    try:
+        d, b, h = collect_all(pkg)
+        datas += d
+        binaries += b
+        hiddenimports += h
+    except Exception:
+        pass
+hiddenimports += [
+    "webview.platforms.edgechromium",
+    "webview.platforms.winforms",
+    "clr",
+]
+
 a = Analysis(
     ["run_nexum.py"],
     pathex=[],
