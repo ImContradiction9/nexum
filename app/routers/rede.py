@@ -5,6 +5,7 @@ PC (localhost) — o middleware garante isso. A página de login (/rede/entrar) 
 POST /rede/login são acessíveis pelo celular pra digitar o PIN.
 """
 import subprocess
+import sys
 
 from fastapi import APIRouter, Depends, Request, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
@@ -91,28 +92,34 @@ def compartilhar(request: Request, dados: dict, db: Session = Depends(get_db)):
 
 @router.post("/api/rede/firewall")
 def liberar_firewall(request: Request):
-    """Tenta criar uma regra de firewall (Windows) liberando a porta na rede
-    privada. Pede elevação (UAC) uma vez. Best-effort: se o usuário recusar,
-    devolve ok=False e a UI mostra instruções manuais."""
+    """Libera o Nexum no Firewall do Windows para acesso pela rede local.
+    Pede elevação (UAC) uma vez. Apaga regras antigas do programa (inclusive as
+    de BLOQUEIO que o Windows cria quando o alerta é negado — bloqueio vence
+    permissão) e cria uma permissão de entrada POR PROGRAMA em TODOS os perfis
+    (Privado e Público — redes domésticas costumam vir como Pública). Best-effort:
+    se o usuário recusar o UAC, devolve ok=False e a UI mostra instruções."""
     _so_local(request)
     p = rede_mod.porta()
-    if not p:
-        raise HTTPException(status_code=400, detail="Porta desconhecida.")
+    exe = sys.executable  # frozen → caminho do Nexum.exe
     nome = "Nexum (rede local)"
-    # netsh elevado via PowerShell Start-Process -Verb RunAs.
-    args = (
-        f"advfirewall firewall delete rule name='{nome}'; "
-        f"advfirewall firewall add rule name='{nome}' dir=in action=allow "
-        f"protocol=TCP localport={p} profile=private"
-    )
-    ps = (
-        "Start-Process netsh -Verb RunAs -WindowStyle Hidden "
-        f"-ArgumentList \"{args}\""
-    )
+    # Chaqueia vários netsh num cmd /c elevado (um único UAC).
+    partes = [
+        f'netsh advfirewall firewall delete rule name=all program="{exe}"',
+        f'netsh advfirewall firewall delete rule name="{nome}"',
+        f'netsh advfirewall firewall add rule name="{nome}" dir=in '
+        f'action=allow program="{exe}" enable=yes profile=any',
+    ]
+    if p:
+        partes.append(
+            f'netsh advfirewall firewall add rule name="{nome} porta" dir=in '
+            f'action=allow protocol=TCP localport={p} profile=any'
+        )
+    cmds = " & ".join(partes)
+    ps = f"Start-Process -Verb RunAs -WindowStyle Hidden -FilePath cmd -ArgumentList '/c','{cmds}'"
     try:
         r = subprocess.run(
             ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True, text=True, timeout=40,
         )
         ok = r.returncode == 0
         return {"ok": ok, "detalhe": (r.stderr or r.stdout or "").strip()[:300]}
