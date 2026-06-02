@@ -1164,8 +1164,23 @@
     </div>
 
     <div class="space-y-3">
-      <template x-for="a in ativosOrdenados()" :key="a.id">
+      <template x-for="g in ativosAgrupados()" :key="g.tipo">
         <div class="border border-zinc-800 rounded-lg overflow-hidden">
+          <!-- Cabeçalho do GRUPO (tipo) — clica pra recolher/expandir -->
+          <div @click="toggleGrupo(g.tipo)"
+               class="px-5 py-3 bg-zinc-900/40 hover:bg-zinc-900/70 cursor-pointer flex items-center gap-4">
+            <span class="text-zinc-600 text-xs w-3" x-text="gruposAbertos[g.tipo] ? '▼' : '▶'"></span>
+            <span class="font-medium text-blue-400 flex-1" x-text="g.tipo"></span>
+            <span class="text-xs text-zinc-500" x-text="g.ativos.length + (g.ativos.length === 1 ? ' ativo' : ' ativos')"></span>
+            <span class="font-mono text-zinc-200 text-sm" x-text="brl(g.total_brl)"></span>
+            <span class="font-mono text-xs w-20 text-right"
+                  :class="g.rentab_brl >= 0 ? 'text-emerald-500' : 'text-red-400'"
+                  x-text="g.investido_brl > 0 ? ((g.rentab_brl >= 0 ? '+' : '') + (g.rentab_brl / g.investido_brl * 100).toFixed(1) + '%') : ''"></span>
+          </div>
+          <!-- Ativos do grupo -->
+          <div x-show="gruposAbertos[g.tipo]">
+            <template x-for="a in g.ativos" :key="a.id">
+              <div class="border-t border-zinc-900">
           <!-- Cabeçalho do ativo (clicável) -->
           <div class="px-5 py-4 hover:bg-zinc-900/40 cursor-pointer flex items-center gap-4"
                @click="ativoExpandido = (ativoExpandido === a.id ? null : a.id); if (ativoExpandido === a.id) carregarOperacoes(a.id)">
@@ -1378,6 +1393,9 @@
                 </tbody>
               </table>
             </div>
+          </div>
+              </div>
+            </template>
           </div>
         </div>
       </template>

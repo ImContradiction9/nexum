@@ -260,7 +260,8 @@ function financeiro() {
     tiposAtivo: [],
     moedasAtivo: ['BRL', 'USD', 'EUR', 'GBP'],
     ativoExpandido: null,
-    ordemInvest: 'valor',   // valor | tipo | data | rentab | nome
+    ordemInvest: 'valor',   // valor | tipo | data | rentab | nome (dentro do grupo)
+    gruposAbertos: {},      // { tipo: bool } — grupos colapsáveis por tipo
     formAtivoAberto: false,
     editandoAtivoId: null,
     ativoForm: { nome: '', ticker: '', tipo: 'Tesouro Direto', moeda: 'BRL', instituicao: '', detalhes_taxa: '', data_vencimento: '', observacoes: '', rendimento_incorpora_saldo: null, cdi_percentual: '', objetivo: 'patrimonio' },
@@ -2124,6 +2125,25 @@ function financeiro() {
         nome:   (a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR'),
       };
       return arr.sort(cmps[this.ordemInvest] || cmps.valor);
+    },
+
+    // Agrupa os ativos (já ordenados) por tipo; grupos ordenados por maior posição.
+    ativosAgrupados() {
+      const grupos = {};
+      for (const a of this.ativosOrdenados()) {
+        const t = a.tipo || 'Outros';
+        if (!grupos[t]) grupos[t] = { tipo: t, ativos: [], total_brl: 0, rentab_brl: 0, investido_brl: 0 };
+        const g = grupos[t];
+        g.ativos.push(a);
+        g.total_brl += a.saldo_atual_brl || 0;
+        g.rentab_brl += a.rentab_brl || 0;
+        g.investido_brl += Math.max(a.valor_investido_brl || 0, 0);
+      }
+      return Object.values(grupos).sort((x, y) => y.total_brl - x.total_brl);
+    },
+
+    toggleGrupo(tipo) {
+      this.gruposAbertos = { ...this.gruposAbertos, [tipo]: !this.gruposAbertos[tipo] };
     },
 
     async carregarInvestimentos() {
