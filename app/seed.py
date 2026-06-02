@@ -100,14 +100,15 @@ CATEGORIAS_PADRAO = [
 
 ATRIBUICOES_PADRAO = [
     # (nome, tipo, descricao, cor)
-    ("Micael",      "Pessoa", "Despesa pessoal do Micael",       "#3B82F6"),
-    ("Andreina",    "Pessoa", "Despesa pessoal da Andreina",     "#EC4899"),
-    ("Casa",        "Grupo",  "Despesas comuns da casa",          "#10B981"),
-    ("Suprimentos", "Grupo",  "Mantimentos e consumo do dia",     "#F59E0B"),
-    ("Cachorros",   "Grupo",  "Pets, veterinário, ração",         "#8B5CF6"),
-    ("Carro",       "Grupo",  "Combustível, peças, manutenção",   "#EF4444"),
-    ("Saúde",       "Grupo",  "Plano, médico, farmácia",          "#06B6D4"),
-    ("Lazer",       "Grupo",  "Diversão, viagens compartilhadas", "#F97316"),
+    # Atribuição = PARA QUEM / qual grupo (pessoa ou centro de custo não-individual).
+    # O QUE foi o gasto é a Categoria — por isso Saúde/Lazer/Suprimentos (que são
+    # tipos de gasto) ficam só em Categoria, não aqui.
+    ("Micael",     "Pessoa", "Despesa pessoal do Micael",       "#3B82F6"),
+    ("Andreina",   "Pessoa", "Despesa pessoal da Andreina",     "#EC4899"),
+    ("Casa",       "Grupo",  "Despesas comuns da casa",          "#10B981"),
+    ("Cachorros",  "Grupo",  "Pets, veterinário, ração",         "#8B5CF6"),
+    ("Carro",      "Grupo",  "Combustível, peças, manutenção",   "#EF4444"),
+    ("Terceiros",  "Grupo",  "Terceiros / valores emprestados",  "#94A3B8"),
 ]
 
 
