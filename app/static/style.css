@@ -41,3 +41,42 @@ input:focus, select:focus {
 
 /* Tabela hover */
 tbody tr { transition: background-color 100ms ease; }
+
+/* ============================================================
+   Responsivo — celular (acesso pela rede local)
+   Sem reescrever o template: empilha grids, reduz folgas e deixa
+   tabelas largas rolarem na horizontal.
+   ============================================================ */
+@media (max-width: 767px) {
+  /* Menos padding lateral nas áreas principais (header, banner, main) */
+  .max-w-\[1600px\] {
+    padding-left: 0.875rem !important;
+    padding-right: 0.875rem !important;
+  }
+  /* Menos respiro vertical nas telas */
+  main.max-w-\[1600px\] {
+    padding-top: 1.25rem !important;
+    padding-bottom: 1.25rem !important;
+  }
+  /* Empilha qualquer grid (KPIs do dashboard, formulários de config etc.) */
+  main .grid {
+    grid-template-columns: 1fr !important;
+    gap: 0.875rem !important;
+  }
+  /* Navegação principal quebra em linhas em vez de estourar a largura */
+  header nav { flex-wrap: wrap; }
+
+  /* Tabelas largas: rola na horizontal mantendo o alinhamento das colunas.
+     Envolvemos via overflow no contêiner .tabela-scroll (ver template);
+     como reforço, qualquer tabela dentro de main ganha largura mínima. */
+  /* !important porque o .overflow-hidden do Tailwind (cantos arredondados)
+     define overflow:hidden e venceria por ordem de cascata. */
+  .tabela-scroll { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
+  .tabela-scroll > table { min-width: 600px; }
+
+  /* Modais ocupam quase a tela toda no celular */
+  .modal-card { width: 100% !important; max-width: 100% !important; }
+
+  /* Gráficos não passam da largura da tela */
+  canvas { max-width: 100% !important; }
+}
