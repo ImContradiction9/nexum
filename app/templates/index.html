@@ -1929,6 +1929,12 @@
           <span x-show="rede.compartilhando" class="text-emerald-500 text-xs">● No ar</span>
         </div>
 
+        <!-- Iniciar automaticamente -->
+        <label class="flex items-center gap-2 text-xs text-zinc-400 mt-2 cursor-pointer select-none">
+          <input type="checkbox" x-model="rede.auto" @change="salvarAutoRede()" class="accent-emerald-500">
+          Iniciar o compartilhamento automaticamente ao abrir o Nexum
+        </label>
+
         <!-- Quando ligado: endereço + QR -->
         <div x-show="rede.compartilhando && rede.url" class="mt-4 bg-zinc-950 border border-zinc-800 rounded-lg p-4">
           <p class="text-xs text-zinc-500 mb-2">No navegador do celular, acesse:</p>

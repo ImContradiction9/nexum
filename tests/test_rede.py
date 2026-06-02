@@ -67,6 +67,23 @@ def test_compartilhar_com_pin_liga_e_desliga(db):
     assert not rede_mod.compartilhando()
 
 
+def test_auto_compartilhar(db):
+    rede_mod.desativar()
+    # Sem PIN definido, ativar o automático deve falhar.
+    with pytest.raises(Exception):
+        rede_router.definir_auto(_req(), {"ativar": True}, db=db)
+    # Define PIN e liga o automático → já compartilha e persiste a config.
+    rede_router.definir_pin(_req(), {"pin": "4321"}, db=db)
+    out = rede_router.definir_auto(_req(), {"ativar": True}, db=db)
+    assert out["auto"] is True
+    assert out["compartilhando"] is True
+    assert rede_router.status(_req(), db=db)["auto"] is True
+    # Desliga o automático.
+    out2 = rede_router.definir_auto(_req(), {"ativar": False}, db=db)
+    assert out2["auto"] is False
+    assert rede_router.status(_req(), db=db)["auto"] is False
+
+
 def test_config_so_pelo_pc(db):
     # Requisição de outro IP (celular) não pode configurar.
     with pytest.raises(Exception):

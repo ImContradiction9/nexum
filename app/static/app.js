@@ -296,7 +296,7 @@ function financeiro() {
     updateDispensado: false,
 
     // Compartilhamento na rede (acesso pelo celular)
-    rede: { compartilhando: false, tem_pin: false, ip: null, porta: null, url: null },
+    rede: { compartilhando: false, tem_pin: false, auto: false, ip: null, porta: null, url: null },
     redePin: '',
     redeBusy: false,
     redeQrPronto: false,
@@ -1648,6 +1648,27 @@ function financeiro() {
         this.rede = await r.json();
         if (this.rede.compartilhando && this.rede.url) this.$nextTick(() => this.renderQrRede());
       } catch (e) { /* silencioso */ }
+    },
+
+    async salvarAutoRede() {
+      try {
+        const r = await fetch('/api/rede/auto', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ativar: this.rede.auto }),
+        });
+        if (!r.ok) {
+          const e = await r.json().catch(() => ({}));
+          this.rede.auto = false;   // reverte o checkbox
+          this.notificar(e.detail || 'Não consegui salvar.', 'erro');
+          return;
+        }
+        const data = await r.json();
+        await this.carregarRedeStatus();   // se ligou, já reflete compartilhando + URL/QR
+        this.notificar(data.auto ? 'Ligado: vai compartilhar sozinho ao abrir o Nexum.' : 'Início automático desligado.', 'ok');
+      } catch (e) {
+        this.rede.auto = false;
+        this.notificar('Erro ao salvar.', 'erro');
+      }
     },
 
     async salvarPinRede() {

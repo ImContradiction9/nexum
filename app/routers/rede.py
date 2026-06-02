@@ -18,6 +18,7 @@ from .. import rede as rede_mod
 router = APIRouter()
 
 CHAVE_PIN = "rede_pin_hash"
+CHAVE_AUTO = "rede_auto"   # "1" = liga o compartilhamento sozinho ao abrir o app
 
 
 def _so_local(request: Request):
@@ -44,12 +45,32 @@ def _set_cfg(db, chave, valor):
 def status(request: Request, db: Session = Depends(get_db)):
     _so_local(request)
     tem_pin = _get_cfg(db, CHAVE_PIN) is not None
+    cfg_auto = _get_cfg(db, CHAVE_AUTO)
     return {
         "compartilhando": rede_mod.compartilhando(),
         "tem_pin": tem_pin,
+        "auto": bool(cfg_auto and cfg_auto.valor == "1"),
         "ip": rede_mod.ip_local(),
         "porta": rede_mod.porta(),
         "url": rede_mod.url_local(),
+    }
+
+
+@router.post("/api/rede/auto")
+def definir_auto(request: Request, dados: dict, db: Session = Depends(get_db)):
+    """Liga/desliga o início automático do compartilhamento ao abrir o Nexum.
+    Exige PIN definido para ativar. Ao ativar, já liga o compartilhamento agora."""
+    _so_local(request)
+    ativar = bool(dados.get("ativar"))
+    if ativar and _get_cfg(db, CHAVE_PIN) is None:
+        raise HTTPException(status_code=400, detail="Defina um PIN antes de ativar o automático.")
+    _set_cfg(db, CHAVE_AUTO, "1" if ativar else "0")
+    if ativar:
+        rede_mod.ativar()   # já compartilha nesta sessão, sem precisar do toggle
+    return {
+        "ok": True, "auto": ativar,
+        "compartilhando": rede_mod.compartilhando(),
+        "url": rede_mod.url_local(), "ip": rede_mod.ip_local(), "porta": rede_mod.porta(),
     }
 
 

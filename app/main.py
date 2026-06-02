@@ -22,6 +22,18 @@ with SessionLocal() as s:
     seed(s)
     s.commit()
 
+# Compartilhamento automático: se o usuário marcou "iniciar ao abrir" (rede_auto=1)
+# e há PIN definido, já liga o compartilhamento na rede nesta inicialização.
+try:
+    from .database import Configuracao as _Cfg
+    with SessionLocal() as _s:
+        _auto = _s.query(_Cfg).filter(_Cfg.chave == "rede_auto").first()
+        _pin = _s.query(_Cfg).filter(_Cfg.chave == "rede_pin_hash").first()
+        if _auto and _auto.valor == "1" and _pin:
+            rede_mod.ativar()
+except Exception:
+    pass
+
 
 # === FastAPI ===
 app = FastAPI(title="Nexum", version="1.0")
