@@ -1038,7 +1038,7 @@
         </div>
         <div class="flex items-center gap-2 text-[10px] text-zinc-600 mb-1.5 tracking-wider">
           <span class="flex-1">Classe</span><span class="w-10 text-right">Atual</span>
-          <span class="w-14 text-right">Alvo</span><span class="w-2"></span><span class="w-24 text-right">Rebalancear</span>
+          <span class="w-14 text-right">Alvo</span><span class="w-2"></span><span class="w-24 text-right">Aportar</span>
         </div>
         <div class="space-y-1.5">
           <template x-for="l in alocacao.linhas" :key="l.tipo">
@@ -1049,13 +1049,14 @@
                      class="w-14 bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-right font-mono">
               <span class="w-2 text-zinc-600">%</span>
               <span class="w-24 text-right font-mono"
-                    :class="(l.delta_brl||0) > 0.5 ? 'text-emerald-500' : ((l.delta_brl||0) < -0.5 ? 'text-red-400' : 'text-zinc-600')"
-                    x-text="l.delta_brl == null ? '—' : ((l.delta_brl>0?'+':'') + brl(l.delta_brl))"></span>
+                    :class="(l.aporte_brl||0) > 0.5 ? 'text-emerald-500' : 'text-zinc-600'"
+                    x-text="l.aporte_brl == null ? '—' : ((l.aporte_brl>0.5?'+':'') + brl(l.aporte_brl))"></span>
             </div>
           </template>
         </div>
         <div class="flex items-center justify-between mt-3">
-          <span class="text-[11px] text-zinc-600">Verde = comprar · vermelho = vender pra chegar no alvo</span>
+          <span class="text-[11px] text-zinc-600"
+                x-text="(alocacao.aporte_total_brl||0) > 0.5 ? ('Aporte de ' + brl(alocacao.aporte_total_brl) + ' pra chegar no alvo (só compra)') : 'Já está no alvo — nada a aportar'"></span>
           <button @click="salvarAlocacaoAlvo()"
                   class="bg-amber-500 hover:bg-amber-400 text-zinc-950 px-3 py-1.5 text-xs font-medium rounded">Salvar alvos</button>
         </div>

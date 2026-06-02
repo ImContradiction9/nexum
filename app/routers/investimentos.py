@@ -746,31 +746,60 @@ def _alocacao_alvo(db: Session) -> dict:
 
 @router.get("/api/investimentos/alocacao")
 def alocacao(db: Session = Depends(get_db)):
-    """Alocação atual por classe (% da carteira) + alvo + quanto comprar/vender
-    pra rebalancear (delta_brl: + comprar, − vender)."""
+    """Alocação atual por classe (% da carteira) + alvo + quanto APORTAR (só
+    compra) pra chegar no alvo. Rebalanceamento por aporte: nunca sugere vender.
+
+    Em vez de comparar com o total atual (o que pediria venda das classes acima
+    do alvo), escalamos o total pra cima até a classe mais sobre-alocada bater no
+    alvo. Assim toda classe só recebe aporte ≥ 0.
+    """
     res = resumo_investimentos(db)
     total = res["total_atual_brl"] or 0
     alvo = _alocacao_alvo(db)
     atual_por_tipo = {t["tipo"]: t["atual_brl"] for t in res["por_tipo"]}
     tipos = set(atual_por_tipo) | set(alvo)
+
+    # Percentuais-alvo válidos por tipo.
+    pct_alvo_por_tipo = {}
+    for t in tipos:
+        pa = alvo.get(t)
+        try:
+            pv = float(pa) if pa is not None else None
+        except (TypeError, ValueError):
+            pv = None
+        pct_alvo_por_tipo[t] = pv
+
+    # Total mínimo da carteira (após aporte) em que nenhuma classe precisa vender:
+    # para cada classe com alvo>0, total >= atual / (alvo/100). Pega o maior.
+    total_alvo = total
+    for t, pv in pct_alvo_por_tipo.items():
+        if pv and pv > 0:
+            necessario = atual_por_tipo.get(t, 0.0) * 100.0 / pv
+            if necessario > total_alvo:
+                total_alvo = necessario
+
     linhas = []
     for t in tipos:
         atual_brl = atual_por_tipo.get(t, 0.0)
         pct_atual = (atual_brl / total * 100) if total else 0
-        pa = alvo.get(t)
-        try:
-            pct_alvo = float(pa) if pa is not None else None
-        except (TypeError, ValueError):
-            pct_alvo = None
-        alvo_brl = (total * pct_alvo / 100) if pct_alvo is not None else None
-        delta = (alvo_brl - atual_brl) if alvo_brl is not None else None
+        pct_alvo = pct_alvo_por_tipo.get(t)
+        if pct_alvo is not None:
+            destino_brl = total_alvo * pct_alvo / 100
+            aporte = max(destino_brl - atual_brl, 0.0)   # só compra, nunca vende
+        else:
+            aporte = None
         linhas.append({
             "tipo": t, "atual_brl": round(atual_brl, 2), "pct_atual": round(pct_atual, 1),
-            "pct_alvo": pct_alvo, "delta_brl": round(delta, 2) if delta is not None else None,
+            "pct_alvo": pct_alvo,
+            "aporte_brl": round(aporte, 2) if aporte is not None else None,
+            # Compat: delta agora é sempre o aporte (≥0); clientes antigos não veem venda.
+            "delta_brl": round(aporte, 2) if aporte is not None else None,
         })
     linhas.sort(key=lambda x: -x["atual_brl"])
+    aporte_total = sum(l["aporte_brl"] for l in linhas if l["aporte_brl"])
     return {
         "total_brl": round(total, 2), "linhas": linhas, "tem_alvo": bool(alvo),
+        "aporte_total_brl": round(aporte_total, 2),
         "soma_alvo": round(sum(float(v) for v in alvo.values()), 1) if alvo else 0,
     }
 
