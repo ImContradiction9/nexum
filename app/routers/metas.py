@@ -10,7 +10,11 @@ from sqlalchemy.orm import Session
 from ..deps import get_db
 from ..database import Ativo, OperacaoInvestimento, Meta
 from .. import cdi as cdi_mod
+from .. import cambio as cambio_mod
 from .. import impostos
+
+# Moedas aceitas no alvo de uma meta (as que temos cotação BRL via BCB).
+MOEDAS_META = ["BRL", "USD", "EUR"]
 from .investimentos import (
     _serializar_ativo, _cdi_serie, _parse_float_ou_none,
     TIPOS_ATIVO, TIPOS_RENDA_FIXA,
@@ -154,8 +158,21 @@ def _calcular_saldos_brl(db: Session):
     taxa_anual_total = (retorno_pond_total / peso_total) if peso_total > 0 else 0.0
     taxa_anual_liq_total = (retorno_pond_liq_total / peso_total) if peso_total > 0 else 0.0
 
+    # Cotações atuais (moeda→BRL) pra metas com alvo em moeda estrangeira.
+    try:
+        cambio_mod.sincronizar(db)
+    except Exception:
+        pass
+    cambio_metas = {"BRL": 1.0}
+    for _m in ("USD", "EUR"):
+        try:
+            cambio_metas[_m] = cambio_mod.taxa_atual(db, _m) or None
+        except Exception:
+            cambio_metas[_m] = None
+
     return {
         "total_brl": total_brl,
+        "cambio": cambio_metas,
         "por_tipo": por_tipo,
         "por_ativo": por_ativo,
         # Líquidos (IR+IOF) — base das projeções de meta.
@@ -302,8 +319,17 @@ def _calcular_progresso_meta(meta: Meta, saldos: dict) -> dict:
     valor_atual_bruto = max(valor_atual_bruto, 0.0)
     ritmo = max(ritmo, 0.0)
 
-    percentual = (valor_atual / meta.valor_alvo * 100) if meta.valor_alvo > 0 else 0
-    falta = max(meta.valor_alvo - valor_atual, 0)
+    # Alvo convertido pra BRL pela cotação atual (ajusta sozinho conforme o câmbio).
+    # Tudo abaixo (percentual, falta, projeção, aporte) usa o alvo EM BRL, porque
+    # os saldos da carteira já estão em BRL.
+    moeda_meta = (meta.moeda or "BRL").upper()
+    taxa_cambio = (saldos.get("cambio", {}) or {}).get(moeda_meta)
+    if not taxa_cambio:
+        taxa_cambio = 1.0   # sem cotação (BRL ou ainda não sincronizado) → 1:1
+    valor_alvo_brl = (meta.valor_alvo or 0) * taxa_cambio
+
+    percentual = (valor_atual / valor_alvo_brl * 100) if valor_alvo_brl > 0 else 0
+    falta = max(valor_alvo_brl - valor_atual, 0)
 
     # Taxa de retorno: anual (fração) → mensal equivalente.
     r_anual = _taxa_anual_meta(meta, saldos)
@@ -322,7 +348,7 @@ def _calcular_progresso_meta(meta: Meta, saldos: dict) -> dict:
                 cresc = (1 + r_mensal) ** t
                 fator = (cresc - 1) / r_mensal
                 fv_sem_aporte = valor_atual * cresc
-                aporte = (meta.valor_alvo - fv_sem_aporte) / fator if fator > 0 else 0
+                aporte = (valor_alvo_brl - fv_sem_aporte) / fator if fator > 0 else 0
                 aporte_mensal_necessario = max(aporte, 0)
             else:
                 aporte_mensal_necessario = falta / t
@@ -337,7 +363,7 @@ def _calcular_progresso_meta(meta: Meta, saldos: dict) -> dict:
     if falta == 0:
         projecao_data = "atingida"
     else:
-        m = _meses_ate_meta(valor_atual, meta.valor_alvo, ritmo, r_mensal)
+        m = _meses_ate_meta(valor_atual, valor_alvo_brl, ritmo, r_mensal)
         if m is not None:
             meses_projetados = m
             dias = int(round(m * 30.4375))
@@ -346,6 +372,8 @@ def _calcular_progresso_meta(meta: Meta, saldos: dict) -> dict:
     return {
         "valor_atual": round(valor_atual, 2),
         "valor_atual_bruto": round(valor_atual_bruto, 2),
+        "valor_alvo_brl": round(valor_alvo_brl, 2),   # alvo convertido pra BRL (câmbio atual)
+        "cambio_usado": round(taxa_cambio, 4) if moeda_meta != "BRL" else None,
         "percentual": round(percentual, 2),
         "falta": round(falta, 2),
         "ritmo_mensal_estimado": round(ritmo, 2),
@@ -383,7 +411,8 @@ def _serializar_meta(meta: Meta, saldos: dict) -> dict:
         "escopo_excluir_ativos": excluir_ids,
         "objetivo": meta.objetivo or "patrimonio",
         "valor_atual_manual": meta.valor_atual_manual or 0,
-        "valor_alvo": meta.valor_alvo,
+        "valor_alvo": meta.valor_alvo,                 # no valor da moeda da meta
+        "moeda": (meta.moeda or "BRL"),
         "data_alvo": meta.data_alvo.isoformat() if meta.data_alvo else None,
         # Override manual da taxa (None = usa a derivada do CDI). O valor
         # efetivamente usado vem em prog["taxa_retorno_anual"].
@@ -479,6 +508,10 @@ def criar_meta(dados: dict, db: Session = Depends(get_db)):
     if valor_alvo <= 0:
         raise HTTPException(400, "valor_alvo precisa ser maior que zero")
 
+    moeda = (dados.get("moeda") or "BRL").upper()
+    if moeda not in MOEDAS_META:
+        raise HTTPException(400, f"moeda inválida (use {', '.join(MOEDAS_META)})")
+
     tipos = dados.get("escopo_tipos") or []
     if escopo == "tipos_ativo":
         if not isinstance(tipos, list) or not tipos:
@@ -517,6 +550,7 @@ def criar_meta(dados: dict, db: Session = Depends(get_db)):
         objetivo=("aquisicao" if dados.get("objetivo") == "aquisicao" else "patrimonio"),
         valor_atual_manual=float(dados.get("valor_atual_manual") or 0) if escopo == "manual" else 0,
         valor_alvo=valor_alvo,
+        moeda=moeda,
         data_alvo=data_alvo,
         taxa_retorno_anual=_parse_float_ou_none(dados.get("taxa_retorno_anual")),
         ordem=int(dados.get("ordem") or 0),
@@ -549,6 +583,11 @@ def atualizar_meta(meta_id: int, dados: dict, db: Session = Depends(get_db)):
         if v <= 0:
             raise HTTPException(400, "valor_alvo precisa ser maior que zero")
         m.valor_alvo = v
+    if "moeda" in dados:
+        moeda = (dados.get("moeda") or "BRL").upper()
+        if moeda not in MOEDAS_META:
+            raise HTTPException(400, f"moeda inválida (use {', '.join(MOEDAS_META)})")
+        m.moeda = moeda
     if "data_alvo" in dados:
         if dados["data_alvo"]:
             try:

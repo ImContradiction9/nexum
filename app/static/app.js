@@ -2299,9 +2299,15 @@ function financeiro() {
     async carregarContasExtrato() {
       try {
         this.contasExtrato = await fetch(`/api/extrato/contas?_=${Date.now()}`).then(r => r.json());
-        // Auto-seleciona a primeira conta se há só uma e ainda não tem nada selecionado
+        // Auto-seleciona a conta com a movimentação MAIS RECENTE (não a 1ª alfabética,
+        // que pode ser uma conta antiga/com poucos lançamentos — fazia parecer que
+        // os meses recentes tinham sumido).
         if (this.contasExtrato.length > 0 && !this.extrato.conta_id) {
-          this.extrato.conta_id = this.contasExtrato[0].id;
+          const maisRecente = [...this.contasExtrato].sort(
+            (a, b) => (b.ultima || '').localeCompare(a.ultima || '')
+          )[0];
+          this.extrato.conta_id = maisRecente.id;
+          this.extrato.mes = '';   // começa mostrando todos os meses da conta
           await this.carregarExtrato();
         }
       } catch (e) {
@@ -2695,6 +2701,7 @@ function financeiro() {
         escopo_excluir_ativos: [],
         valor_atual_manual: 0,
         valor_alvo: 0,
+        moeda: 'BRL',
         data_alvo: '',
         taxa_retorno_anual: '',
         meta_pai_id: '',
@@ -2714,6 +2721,7 @@ function financeiro() {
         escopo_excluir_ativos: [...(m.escopo_excluir_ativos || [])],
         valor_atual_manual: m.valor_atual_manual || 0,
         valor_alvo: m.valor_alvo || 0,
+        moeda: m.moeda || 'BRL',
         data_alvo: m.data_alvo || '',
         taxa_retorno_anual: m.taxa_retorno_anual_override ?? '',
         meta_pai_id: m.meta_pai_id || '',
@@ -2759,6 +2767,7 @@ function financeiro() {
         escopo_excluir_ativos: (m.escopo === 'patrimonio_total' || m.escopo === 'tipos_ativo') ? m.escopo_excluir_ativos : [],
         valor_atual_manual: m.escopo === 'manual' ? Number(m.valor_atual_manual) : 0,
         valor_alvo: Number(m.valor_alvo),
+        moeda: m.moeda || 'BRL',
         data_alvo: m.data_alvo || null,
         taxa_retorno_anual: (m.taxa_retorno_anual === '' || m.taxa_retorno_anual == null)
           ? null : Number(m.taxa_retorno_anual),

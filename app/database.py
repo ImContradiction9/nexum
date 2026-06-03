@@ -404,7 +404,10 @@ class Meta(Base):
     objetivo = Column(String, default="patrimonio")    # "patrimonio" | "aquisicao" (categoria da meta)
     valor_atual_manual = Column(Float, default=0)      # só quando escopo=manual
 
-    valor_alvo = Column(Float, nullable=False)         # em BRL
+    valor_alvo = Column(Float, nullable=False)         # no valor da moeda da meta (abaixo)
+    # Moeda do valor alvo: "BRL" | "USD" | "EUR" | "GBP". Se != BRL, o alvo é
+    # convertido pra BRL pela cotação atual ao calcular o progresso (ajusta sozinho).
+    moeda = Column(String, default="BRL")
     data_alvo = Column(Date)                           # opcional
 
     ordem = Column(Integer, default=0)
@@ -509,6 +512,8 @@ def _aplicar_migracoes(engine):
     add_column_if_missing("faturas", "data_pagamento_manual", "DATE")
     add_column_if_missing("transacoes", "data_pagamento", "DATE")
     _backfill_data_pagamento(engine)
+    # v1.20 — moeda da meta (alvo em moeda estrangeira, ajustado pela cotação)
+    add_column_if_missing("metas", "moeda", "VARCHAR DEFAULT 'BRL'")
     _autofill_cdi_percentual(engine)
     # v1.7 — remove unique constraint do nome da conta (permite múltiplas com mesmo nome)
     _drop_unique_index_se_existir(engine, "contas", "nome")

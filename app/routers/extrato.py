@@ -3,6 +3,7 @@ Extraído de main.py."""
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from ..deps import get_db
@@ -186,6 +187,9 @@ def listar_contas_extrato(db: Session = Depends(get_db)):
     for c in contas:
         n = db.query(Transacao).filter(Transacao.conta_id == c.id).count()
         if n > 0:
+            ultima = db.query(func.max(Transacao.data)).filter(
+                Transacao.conta_id == c.id
+            ).scalar()
             out.append({
                 "id": c.id,
                 "nome": c.nome,
@@ -193,6 +197,7 @@ def listar_contas_extrato(db: Session = Depends(get_db)):
                 "banco_cor": c.banco_obj.cor if c.banco_obj else None,
                 "titular": c.titular,
                 "n_transacoes": n,
+                "ultima": ultima.isoformat() if ultima else None,   # data mais recente (pra default)
             })
     out.sort(key=lambda c: (c["banco"] or "", c["titular"] or "", c["nome"]))
     return out
