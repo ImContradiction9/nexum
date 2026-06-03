@@ -56,6 +56,13 @@ def _calcular_saldos_brl(db: Session):
     serie = _cdi_serie(db)
     cdi_aa = cdi_mod.cdi_anual(serie)
 
+    # Sincroniza as cotações UMA vez antes do loop, pra valorizar os ativos em
+    # moeda estrangeira pela taxa de HOJE (mesma da carteira).
+    try:
+        cambio_mod.sincronizar(db)
+    except Exception:
+        pass
+
     total_brl = 0.0
     por_tipo = {}
     por_ativo = {}        # {ativo_id: saldo_brl}
@@ -78,10 +85,16 @@ def _calcular_saldos_brl(db: Session):
         ops = por_ativo_ops.get(a.id, [])
         ultimo_cambio = 1.0
         if a.moeda != "BRL":
-            for op in sorted(ops, key=lambda x: x.data, reverse=True):
-                if op.cotacao_cambio:
-                    ultimo_cambio = op.cotacao_cambio
-                    break
+            # Câmbio de HOJE (mesma cotação da carteira/patrimônio) — mantém metas
+            # e patrimônio consistentes. Só cai pro câmbio da última operação se
+            # não houver cotação atual disponível.
+            ultimo_cambio = cambio_mod.taxa_atual(db, a.moeda)
+            if not ultimo_cambio:
+                ultimo_cambio = 1.0
+                for op in sorted(ops, key=lambda x: x.data, reverse=True):
+                    if op.cotacao_cambio:
+                        ultimo_cambio = op.cotacao_cambio
+                        break
         # Usa o mesmo saldo da carteira (_serializar_ativo): saldo manual se
         # informado, senão CDI (renda fixa indexada), senão soma de operações.
         ser = _serializar_ativo(a, ops, serie)
@@ -159,10 +172,7 @@ def _calcular_saldos_brl(db: Session):
     taxa_anual_liq_total = (retorno_pond_liq_total / peso_total) if peso_total > 0 else 0.0
 
     # Cotações atuais (moeda→BRL) pra metas com alvo em moeda estrangeira.
-    try:
-        cambio_mod.sincronizar(db)
-    except Exception:
-        pass
+    # (já sincronizado no início da função)
     cambio_metas = {"BRL": 1.0}
     for _m in ("USD", "EUR"):
         try:
