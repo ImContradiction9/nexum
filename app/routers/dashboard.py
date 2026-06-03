@@ -74,6 +74,7 @@ def dashboard(
     data_inicio: Optional[str] = None,   # "YYYY-MM-DD" — sobrepõe mes
     data_fim: Optional[str] = None,      # "YYYY-MM-DD"
     incluir_especiais: bool = False,
+    regime: str = "pagamento",           # "pagamento" (caixa) | "emissao" (compra)
     db: Session = Depends(get_db),
 ):
     """
@@ -116,6 +117,16 @@ def dashboard(
         mes_label = mes
         mes_anterior_label = None  # vai ser calculado depois
 
+    # Regime: por qual data filtrar o período.
+    #   "pagamento" (caixa) → data efetiva de pagamento (cartão = vencimento/pagamento
+    #                         da fatura; extrato = a própria data).
+    #   "emissao"           → data da compra.
+    regime = (regime or "pagamento").lower()
+    if regime not in ("pagamento", "emissao"):
+        regime = "pagamento"
+    campo_data = (func.coalesce(Transacao.data_pagamento, Transacao.data)
+                  if regime == "pagamento" else Transacao.data)
+
     # IDs das categorias especiais a excluir dos totais (Investimentos e
     # Empréstimos seguem como categoria; fatura/transferência saem por flag).
     NOMES_ESPECIAIS = [
@@ -130,8 +141,8 @@ def dashboard(
     # Base: exclui suspeitas de duplicata (não contam até usuário revisar)
     if modo_periodo:
         base = db.query(Transacao).filter(
-            Transacao.data >= di_obj,
-            Transacao.data <= df_obj,
+            campo_data >= di_obj,
+            campo_data <= df_obj,
             (Transacao.suspeita_duplicata == False) | Transacao.suspeita_duplicata.is_(None),
         )
     else:
@@ -158,7 +169,7 @@ def dashboard(
             (Transacao.dividida == False) | Transacao.dividida.is_(None),
         )
         if modo_periodo:
-            q = q.filter(Transacao.data >= di_obj, Transacao.data <= df_obj)
+            q = q.filter(campo_data >= di_obj, campo_data <= df_obj)
         else:
             q = q.filter(Transacao.mes_referencia == mes)
         v = q.scalar() or 0
@@ -174,7 +185,7 @@ def dashboard(
             (Transacao.dividida == False) | Transacao.dividida.is_(None),
         )
         if modo_periodo:
-            q = q.filter(Transacao.data >= di_obj, Transacao.data <= df_obj)
+            q = q.filter(campo_data >= di_obj, campo_data <= df_obj)
         else:
             q = q.filter(Transacao.mes_referencia == mes)
         v = q.scalar() or 0
@@ -347,8 +358,8 @@ def dashboard(
         # Período de mesma duração antes
         mes_anterior = mes_anterior_label
         base_ant_query = db.query(Transacao).filter(
-            Transacao.data >= di_ant_obj,
-            Transacao.data <= df_ant_obj,
+            campo_data >= di_ant_obj,
+            campo_data <= df_ant_obj,
             (Transacao.suspeita_duplicata == False) | Transacao.suspeita_duplicata.is_(None),
         )
         n_ant_total = base_ant_query.count()
@@ -581,8 +592,11 @@ def dashboard(
 
 
 @router.get("/api/dashboard/evolucao")
-def evolucao_mensal(meses: int = 12, incluir_especiais: bool = False, db: Session = Depends(get_db)):
-    """Retorna receitas e despesas mês a mês, ordenadas cronologicamente."""
+def evolucao_mensal(meses: int = 12, incluir_especiais: bool = False,
+                    regime: str = "pagamento", db: Session = Depends(get_db)):
+    """Retorna receitas e despesas mês a mês, ordenadas cronologicamente.
+    `regime`: "pagamento" agrupa pelo mês de pagamento (caixa); "emissao" pelo mês
+    da compra."""
     NOMES_ESPECIAIS = [
         "Empréstimos a Terceiros",
         "Investimentos",
@@ -590,8 +604,15 @@ def evolucao_mensal(meses: int = 12, incluir_especiais: bool = False, db: Sessio
     cats_esp = db.query(Categoria).filter(Categoria.nome.in_(NOMES_ESPECIAIS)).all()
     ids_esp = [c.id for c in cats_esp]
 
+    regime = (regime or "pagamento").lower()
+    if regime not in ("pagamento", "emissao"):
+        regime = "pagamento"
+    campo_data = (func.coalesce(Transacao.data_pagamento, Transacao.data)
+                  if regime == "pagamento" else Transacao.data)
+    mes_chave = func.strftime("%m/%Y", campo_data)   # "MM/YYYY" do regime escolhido
+
     q = db.query(
-        Transacao.mes_referencia,
+        mes_chave,
         Transacao.tipo,
         func.sum(Transacao.valor),
     ).filter((Transacao.dividida == False) | Transacao.dividida.is_(None))
@@ -601,7 +622,7 @@ def evolucao_mensal(meses: int = 12, incluir_especiais: bool = False, db: Sessio
             q = q.filter(
                 ~Transacao.categoria_id.in_(ids_esp) | Transacao.categoria_id.is_(None)
             )
-    rows = q.group_by(Transacao.mes_referencia, Transacao.tipo).all()
+    rows = q.group_by(mes_chave, Transacao.tipo).all()
 
     # rows: lista de (mes_ref "MM/YYYY", tipo, total)
     por_mes = {}

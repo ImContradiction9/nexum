@@ -266,6 +266,9 @@ def importar_pdf(
             hash_dedup=h_dedup,
             observacoes=f"Fatura {banco} {mes_ref}",
             suspeita_duplicata=eh_suspeita,
+            # Regime de caixa: cartão paga no vencimento da fatura (recalculado se
+            # o pagamento for vinculado ao extrato depois).
+            data_pagamento=fatura.data_vencimento or t["data_compra"],
         )
 
         # Se for parcelada e já existe irmã classificada manualmente,
@@ -658,6 +661,8 @@ def importar_ofx(session: Session, ofx_path: str, conta_id_override: int = None)
             hash_dedup=fitid_dedup,
             observacoes=f"Extrato {banco} {mes_ref}",
             suspeita_duplicata=eh_suspeita,
+            # Extrato já é o pagamento em si → data efetiva = data da transação.
+            data_pagamento=t["data"],
         )
         session.add(trans)
         n_inseridas += 1
@@ -676,6 +681,16 @@ def importar_ofx(session: Session, ofx_path: str, conta_id_override: int = None)
     ).all():
         vincular_estorno(session, trans)
     session.flush()
+
+    # Vincula automaticamente pagamentos de fatura (do extrato) às faturas de
+    # cartão de alta confiança — assim a "data de pagamento" das faturas de cartão
+    # passa a ser a data real do pagamento que apareceu agora no extrato.
+    try:
+        from .conciliacao import conciliar_pagamentos_auto
+        conciliar_pagamentos_auto(session)
+        session.flush()
+    except Exception:
+        pass
 
     return ResultadoImportacao(
         sucesso=True,

@@ -118,6 +118,9 @@ class Fatura(Base):
     pdf_hash = Column(String, unique=True)                      # SHA256 do PDF — evita reimportação
     importada_em = Column(DateTime, default=datetime.utcnow)
     observacoes = Column(Text)
+    # Override manual da data de pagamento da fatura (ex.: paga adiantado, antes do
+    # vencimento). Tem prioridade sobre o pagamento vinculado e sobre o vencimento.
+    data_pagamento_manual = Column(Date)
 
     conta = relationship("Conta")
     transacoes = relationship(
@@ -181,6 +184,12 @@ class Transacao(Base):
     # nos totais/categorias e NÃO aparecem no Extrato (senão duplicaria o saldo).
     parte_de_id = Column(Integer, ForeignKey("transacoes.id"))  # setado nas filhas → aponta o pai
     dividida = Column(Boolean, default=False)                   # True no pai dividido
+
+    # Data EFETIVA de pagamento (regime de caixa): quando o dinheiro saiu/entrou
+    # de fato. Cartão = data de pagamento da fatura (manual > vínculo no extrato >
+    # vencimento). Conta corrente/carteira/manual = a própria `data`. Armazenada
+    # pra o dashboard só trocar o campo de filtro entre emissão (`data`) e pagamento.
+    data_pagamento = Column(Date, index=True)
 
     importada_em = Column(DateTime, default=datetime.utcnow)
     hash_dedup = Column(String, index=True)                     # banco+data+valor+desc → detecta duplicata
@@ -496,6 +505,10 @@ def _aplicar_migracoes(engine):
     # v1.18 — divisão de transação em partes (transações-filhas)
     add_column_if_missing("transacoes", "parte_de_id", "INTEGER")
     add_column_if_missing("transacoes", "dividida", "BOOLEAN DEFAULT 0")
+    # v1.19 — regime de pagamento: data efetiva de pagamento (caixa)
+    add_column_if_missing("faturas", "data_pagamento_manual", "DATE")
+    add_column_if_missing("transacoes", "data_pagamento", "DATE")
+    _backfill_data_pagamento(engine)
     _autofill_cdi_percentual(engine)
     # v1.7 — remove unique constraint do nome da conta (permite múltiplas com mesmo nome)
     _drop_unique_index_se_existir(engine, "contas", "nome")
@@ -542,6 +555,31 @@ def _migrar_movimentacao(engine):
             _exec(conn, "UPDATE memoria SET categoria_id = NULL WHERE categoria_id = :id", {"id": cat_id})
             # Remove a categoria
             _exec(conn, "DELETE FROM categorias WHERE id = :id", {"id": cat_id})
+
+
+def _backfill_data_pagamento(engine):
+    """Preenche transacoes.data_pagamento (data efetiva de pagamento) onde está NULL.
+    Cartão de Crédito: COALESCE(manual da fatura, pagamento vinculado no extrato,
+    vencimento da fatura, data da compra). Demais contas: a própria `data`.
+    Só preenche NULLs (idempotente); mudanças posteriores via recalcular_data_pagamento."""
+    from sqlalchemy import text
+    with engine.begin() as conn:
+        try:
+            conn.execute(text("""
+                UPDATE transacoes SET data_pagamento = COALESCE(
+                    (SELECT f.data_pagamento_manual FROM faturas f WHERE f.id = transacoes.fatura_id),
+                    (SELECT MIN(p.data) FROM transacoes p WHERE p.pagamento_de_fatura_id = transacoes.fatura_id),
+                    (SELECT f.data_vencimento FROM faturas f WHERE f.id = transacoes.fatura_id),
+                    transacoes.data
+                )
+                WHERE data_pagamento IS NULL
+                  AND conta_id IN (SELECT id FROM contas WHERE tipo = 'Cartão de Crédito')
+            """))
+            conn.execute(text(
+                "UPDATE transacoes SET data_pagamento = data WHERE data_pagamento IS NULL"
+            ))
+        except Exception:
+            pass
 
 
 def _merge_categoria(engine, de_nome: str, para_nome: str):

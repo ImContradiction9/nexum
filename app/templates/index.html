@@ -159,7 +159,23 @@
                class="bg-zinc-900 border border-zinc-800 px-2 py-1.5 text-xs rounded font-mono">
       </div>
 
-      <span class="text-xs text-zinc-600 ml-auto" x-text="rotuloPeriodo()"></span>
+      <!-- Regime: emissão (compra) vs pagamento (caixa) -->
+      <div class="ml-auto flex items-center gap-1"
+           title="Emissão = data da compra · Pagamento = quando o dinheiro saiu de fato (vencimento/pagamento da fatura no cartão; data no extrato)">
+        <span class="text-xs tracking-widest text-zinc-500 mr-1">Ver por</span>
+        <div class="inline-flex rounded border border-zinc-800 overflow-hidden">
+          <button @click="mudarRegime('pagamento')"
+                  :class="regime === 'pagamento' ? 'bg-amber-500 text-zinc-950 font-medium' : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200'"
+                  class="px-3 py-1.5 text-xs transition">Pagamento</button>
+          <button @click="mudarRegime('emissao')"
+                  :class="regime === 'emissao' ? 'bg-amber-500 text-zinc-950 font-medium' : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200'"
+                  class="px-3 py-1.5 text-xs transition border-l border-zinc-800">Emissão</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="flex items-center justify-end -mt-6 mb-6">
+      <span class="text-xs text-zinc-600" x-text="rotuloPeriodo()"></span>
     </div>
 
     <!-- Barra de blocos ocultos (mostrar de volta) -->
@@ -2480,6 +2496,7 @@
               <th class="text-left px-4 py-3">Titular</th>
               <th class="text-left px-4 py-3">Mês ref.</th>
               <th class="text-left px-4 py-3">Vencimento</th>
+              <th class="text-left px-4 py-3">Pagamento</th>
               <th class="text-right px-4 py-3">Total</th>
               <th class="text-left px-4 py-3">Arquivo</th>
               <th class="text-left px-4 py-3">Importado em</th>
@@ -2495,6 +2512,21 @@
                 <td class="px-4 py-2.5 text-xs text-zinc-400" x-text="f.titular || '(você)'"></td>
                 <td class="px-4 py-2.5 font-mono text-xs" x-text="f.mes_referencia"></td>
                 <td class="px-4 py-2.5 font-mono text-xs text-zinc-400" x-text="formatarData(f.data_vencimento)"></td>
+                <!-- Data de pagamento (regime de caixa) — editável só pra cartão -->
+                <td class="px-4 py-2.5 text-xs">
+                  <div x-show="f.tipo_conta === 'Cartão de Crédito'" class="flex items-center gap-1.5">
+                    <input type="date" :value="f.data_pagamento_efetiva || ''"
+                           @change="salvarPagamentoFatura(f, $event.target.value)"
+                           class="bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5 text-xs font-mono"
+                           title="Data em que a fatura foi paga. Edite se o pagamento foi adiantado/atrasado.">
+                    <span class="text-[10px] tracking-wide"
+                          :class="f.data_pagamento_origem === 'manual' ? 'text-amber-400' : (f.data_pagamento_origem === 'vinculada' ? 'text-emerald-500' : 'text-zinc-600')"
+                          x-text="f.data_pagamento_origem === 'manual' ? 'manual' : (f.data_pagamento_origem === 'vinculada' ? 'pago' : 'venc.')"></span>
+                    <button x-show="f.data_pagamento_origem === 'manual'" @click="salvarPagamentoFatura(f, '')"
+                            class="text-[10px] text-zinc-600 hover:text-amber-400" title="Voltar ao automático">auto</button>
+                  </div>
+                  <span x-show="f.tipo_conta !== 'Cartão de Crédito'" class="text-zinc-700">—</span>
+                </td>
                 <td class="px-4 py-2.5 text-right font-mono" x-text="brl(f.total)"></td>
                 <td class="px-4 py-2.5 text-xs text-zinc-500" x-text="f.pdf_filename"></td>
                 <td class="px-4 py-2.5 text-xs text-zinc-500" x-text="formatarDataHora(f.importada_em)"></td>
@@ -2504,7 +2536,7 @@
               </tr>
             </template>
             <tr x-show="faturasFiltradas().length === 0 && faturas.length === 0">
-              <td colspan="9" class="px-4 py-8 text-center text-zinc-600 text-sm">
+              <td colspan="10" class="px-4 py-8 text-center text-zinc-600 text-sm">
                 Nenhum arquivo importado ainda. Use "Importar arquivo" no topo.
               </td>
             </tr>

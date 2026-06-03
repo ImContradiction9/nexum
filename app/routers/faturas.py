@@ -1,12 +1,31 @@
 """Faturas/extratos importados: listagem, mapa de cobertura, exclusão.
 Extraído de main.py."""
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from ..deps import get_db
 from ..database import Fatura, Conta, Transacao
+from ..conciliacao import recalcular_data_pagamento
 
 router = APIRouter()
+
+
+def _pagamento_efetivo(db: Session, f: Fatura) -> tuple:
+    """(data_iso, origem) da data de pagamento efetiva da fatura.
+    origem: 'manual' | 'vinculada' | 'vencimento' | None."""
+    if f.data_pagamento_manual:
+        return f.data_pagamento_manual.isoformat(), "manual"
+    pago = db.query(func.min(Transacao.data)).filter(
+        Transacao.pagamento_de_fatura_id == f.id
+    ).scalar()
+    if pago:
+        return pago.isoformat(), "vinculada"
+    if f.data_vencimento:
+        return f.data_vencimento.isoformat(), "vencimento"
+    return None, None
 
 
 @router.get("/api/faturas")
@@ -16,17 +35,48 @@ def listar_faturas(db: Session = Depends(get_db)):
     ).order_by(
         Fatura.data_vencimento.desc()
     ).all()
-    return [{
-        "id": f.id, "banco": f.banco,
-        "conta_id": f.conta_id,
-        "conta": f.conta.nome if f.conta else None,
-        "tipo_conta": f.conta.tipo if f.conta else None,
-        "titular": (f.conta.titular if f.conta else None) or "(você)",
-        "mes_referencia": f.mes_referencia,
-        "data_vencimento": f.data_vencimento.isoformat() if f.data_vencimento else None,
-        "total": f.total, "pdf_filename": f.pdf_filename,
-        "importada_em": f.importada_em.isoformat() if f.importada_em else None,
-    } for f in items]
+    out = []
+    for f in items:
+        eh_cartao = bool(f.conta and f.conta.tipo == "Cartão de Crédito")
+        pag_iso, pag_origem = _pagamento_efetivo(db, f) if eh_cartao else (None, None)
+        out.append({
+            "id": f.id, "banco": f.banco,
+            "conta_id": f.conta_id,
+            "conta": f.conta.nome if f.conta else None,
+            "tipo_conta": f.conta.tipo if f.conta else None,
+            "titular": (f.conta.titular if f.conta else None) or "(você)",
+            "mes_referencia": f.mes_referencia,
+            "data_vencimento": f.data_vencimento.isoformat() if f.data_vencimento else None,
+            "data_pagamento_manual": f.data_pagamento_manual.isoformat() if f.data_pagamento_manual else None,
+            "data_pagamento_efetiva": pag_iso,
+            "data_pagamento_origem": pag_origem,
+            "total": f.total, "pdf_filename": f.pdf_filename,
+            "importada_em": f.importada_em.isoformat() if f.importada_em else None,
+        })
+    return out
+
+
+@router.patch("/api/faturas/{fid}")
+def atualizar_fatura(fid: int, dados: dict, db: Session = Depends(get_db)):
+    """Edita a fatura. Hoje aceita `data_pagamento_manual` ("YYYY-MM-DD" ou null/""
+    pra limpar). Recalcula a data de pagamento das transações da fatura."""
+    f = db.query(Fatura).get(fid)
+    if not f:
+        raise HTTPException(404, "Fatura não encontrada")
+    if "data_pagamento_manual" in dados:
+        v = dados["data_pagamento_manual"]
+        if v in (None, ""):
+            f.data_pagamento_manual = None
+        else:
+            try:
+                f.data_pagamento_manual = datetime.strptime(v, "%Y-%m-%d").date()
+            except (ValueError, TypeError):
+                raise HTTPException(400, "data_pagamento_manual inválida (use YYYY-MM-DD)")
+        db.flush()
+        recalcular_data_pagamento(db, f)
+    db.commit()
+    pag_iso, pag_origem = _pagamento_efetivo(db, f)
+    return {"ok": True, "data_pagamento_efetiva": pag_iso, "data_pagamento_origem": pag_origem}
 
 
 @router.get("/api/faturas/cobertura")

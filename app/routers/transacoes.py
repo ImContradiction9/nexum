@@ -322,6 +322,7 @@ def criar_transacao(dados: dict, db: Session = Depends(get_db)):
         atribuicao_origem=atr_origem if atribuicao_id else "nao_categorizado",
         observacoes=dados.get("observacoes") or "Lançamento manual",
         hash_dedup=h_dedup,
+        data_pagamento=data,   # lançamento manual: pagamento = a própria data
     )
     db.add(t)
     db.commit()
@@ -697,6 +698,7 @@ def definir_partes(trans_id: int, partes: list[dict], db: Session = Depends(get_
             tipo=pai.tipo,
             forma_pagamento=pai.forma_pagamento,
             mes_referencia=pai.mes_referencia,
+            data_pagamento=pai.data_pagamento or pai.data,
             categoria_id=p.get("categoria_id"),
             categoria_origem="manual",
             atribuicao_id=p.get("atribuicao_id"),

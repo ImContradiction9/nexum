@@ -26,10 +26,40 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
+from sqlalchemy import and_, func
 
 from .database import Transacao, Fatura, Conciliacao, Conta
 from .utils import normalizar_descricao
+
+
+def data_pagamento_fatura(session: Session, fatura: Fatura):
+    """Data efetiva de pagamento de uma fatura de cartão (regime de caixa):
+    prioridade manual > pagamento vinculado no extrato (menor data) > vencimento.
+    Retorna None se nada disso existir."""
+    if fatura is None:
+        return None
+    if fatura.data_pagamento_manual:
+        return fatura.data_pagamento_manual
+    pago = session.query(func.min(Transacao.data)).filter(
+        Transacao.pagamento_de_fatura_id == fatura.id
+    ).scalar()
+    if pago:
+        return pago
+    return fatura.data_vencimento
+
+
+def recalcular_data_pagamento(session: Session, fatura: Fatura):
+    """Recalcula `data_pagamento` de todas as transações de uma fatura.
+    Cartão → data efetiva da fatura (fallback data da compra). Extrato → a própria data."""
+    if fatura is None:
+        return
+    conta = session.query(Conta).get(fatura.conta_id) if fatura.conta_id else None
+    eh_cartao = bool(conta and conta.tipo == "Cartão de Crédito")
+    txns = session.query(Transacao).filter(Transacao.fatura_id == fatura.id).all()
+    efetiva = data_pagamento_fatura(session, fatura) if eh_cartao else None
+    for t in txns:
+        t.data_pagamento = (efetiva or t.data) if eh_cartao else t.data
+    session.flush()
 
 
 # Palavras que indicam que uma transação no extrato é PAGAMENTO de fatura
@@ -58,47 +88,50 @@ def _eh_provavel_pagamento_fatura(desc: str) -> bool:
 
 def detectar_pagamentos_fatura(session: Session) -> list[SugestaoConciliacao]:
     """
-    Para cada transação do extrato (sem fatura_id) que parece pagamento,
-    procura uma fatura cujo valor + data baterem.
+    Casa o PAGAMENTO de uma fatura de cartão (que aparece no EXTRATO da conta
+    corrente, hoje marcado como movimentacao='fatura') com a FATURA de cartão
+    correspondente, por valor + proximidade do vencimento.
 
-    Tolerância padrão:
-      - data: ±5 dias do vencimento
-      - valor: ±0,01 (centavos)
+    Tolerância:
+      - valor: ±0,01 (sinal forte)
+      - data: ±20 dias do vencimento (cobre pagamento adiantado)
     """
     sugestoes = []
 
-    # Transações candidatas: tipo Despesa, sem fatura_id (não são da própria fatura),
-    # ainda não conciliadas, descrição com palavra-chave de pagamento
+    # Contas de cartão e faturas de cartão com total + vencimento
+    contas_cartao = {c.id for c in session.query(Conta).filter(
+        Conta.tipo == "Cartão de Crédito"
+    ).all()}
+    faturas_cartao = [
+        f for f in session.query(Fatura).filter(
+            Fatura.total.isnot(None), Fatura.data_vencimento.isnot(None)
+        ).all() if f.conta_id in contas_cartao
+    ]
+    if not faturas_cartao:
+        return sugestoes
+
+    # Candidatas: pagamentos de fatura (movimentacao='fatura' ou palavra-chave),
+    # ainda não vinculados, e que NÃO sejam da própria conta de cartão.
     candidatas = session.query(Transacao).filter(
-        Transacao.fatura_id.is_(None),
         Transacao.pagamento_de_fatura_id.is_(None),
         Transacao.tipo == "Despesa",
     ).all()
 
     for t in candidatas:
-        if not _eh_provavel_pagamento_fatura(t.descricao):
+        if t.conta_id in contas_cartao:
+            continue  # pagamento sai da conta corrente, não do cartão
+        eh_pag = (t.movimentacao == "fatura") or _eh_provavel_pagamento_fatura(t.descricao)
+        if not eh_pag:
             continue
 
-        # Procura faturas com valor próximo + vencimento próximo
-        faturas = session.query(Fatura).filter(
-            Fatura.total.isnot(None),
-        ).all()
-
         melhor: Optional[tuple[Fatura, float]] = None
-        for f in faturas:
-            if f.total is None:
-                continue
-            diff_valor = abs(f.total - t.valor)
-            if diff_valor > 0.01:
-                continue
-            if not f.data_vencimento:
-                # se não tem vencimento, aceita só se for o mesmo banco
+        for f in faturas_cartao:
+            if abs((f.total or 0) - t.valor) > 0.01:
                 continue
             diff_dias = abs((t.data - f.data_vencimento).days)
-            if diff_dias > 5:
+            if diff_dias > 20:
                 continue
-            # Score combinado
-            score = 1.0 - (diff_dias / 5) * 0.3 - (diff_valor / 1.0) * 0.1
+            score = 1.0 - (diff_dias / 20) * 0.3
             if melhor is None or score > melhor[1]:
                 melhor = (f, score)
 
@@ -110,13 +143,37 @@ def detectar_pagamentos_fatura(session: Session) -> list[SugestaoConciliacao]:
                 tipo="pagamento_fatura",
                 confianca=score,
                 motivo=(
-                    f"Transação '{t.descricao[:40]}' de {t.data.strftime('%d/%m/%Y')} "
+                    f"Pagamento '{t.descricao[:40]}' de {t.data.strftime('%d/%m/%Y')} "
                     f"R$ {t.valor:.2f} bate com fatura {f.banco} venc. "
                     f"{f.data_vencimento.strftime('%d/%m/%Y')}"
                 ),
             ))
 
     return sugestoes
+
+
+def conciliar_pagamentos_auto(session: Session) -> int:
+    """Detecta e aplica automaticamente os pagamentos de fatura de alta confiança
+    (valor exato). Recalcula a data de pagamento das faturas afetadas.
+    Retorna quantos foram vinculados. Idempotente (pula já vinculados)."""
+    n = 0
+    faturas_afetadas = set()
+    for sug in detectar_pagamentos_fatura(session):
+        if sug.confianca < 0.7:
+            continue
+        # Evita vincular 2 pagamentos à mesma fatura
+        ja = session.query(Transacao).filter(
+            Transacao.pagamento_de_fatura_id == sug.fatura_id
+        ).first()
+        if ja:
+            continue
+        aplicar_conciliacao(session, sug, confirmar=True)
+        faturas_afetadas.add(sug.fatura_id)
+        n += 1
+    for fid in faturas_afetadas:
+        f = session.query(Fatura).get(fid)
+        recalcular_data_pagamento(session, f)
+    return n
 
 
 def detectar_duplicatas(session: Session) -> list[SugestaoConciliacao]:
@@ -214,6 +271,8 @@ def aplicar_conciliacao(
         if sugestao.tipo == "pagamento_fatura" and sugestao.fatura_id:
             t_a.pagamento_de_fatura_id = sugestao.fatura_id
             t_a.conciliada = True
+            # A data de pagamento da fatura passou a ser a data desse pagamento real
+            recalcular_data_pagamento(session, session.query(Fatura).get(sugestao.fatura_id))
         elif sugestao.tipo == "duplicata" and sugestao.transacao_b_id:
             # Marca a SEGUNDA como duplicata da primeira
             t_b = session.query(Transacao).get(sugestao.transacao_b_id)

@@ -58,6 +58,8 @@ function financeiro() {
     // Período do dashboard (preset escolhido)
     periodoPreset: 'mes',  // 'mes' | 'mes_anterior' | '30d' | '90d' | 'ano' | 'personalizado'
     periodoCustom: { data_inicio: '', data_fim: '' },
+    // Regime do dashboard: 'pagamento' (caixa) | 'emissao' (compra). Salvo no aparelho.
+    regime: (localStorage.getItem('nexum_regime') || 'pagamento'),
 
     // Totais monetários da listagem (atualizado a cada carregarTransacoes)
     totaisListagem: { receitas: 0, despesas: 0, saldo: 0 },
@@ -472,6 +474,7 @@ function financeiro() {
       } else if (this.dashboard.mes) {
         params.set('mes', this.dashboard.mes);
       }
+      params.set('regime', this.regime);
 
       const url = `/api/dashboard?${params.toString()}`;
       const data = await fetch(url).then(r => r.json());
@@ -493,6 +496,13 @@ function financeiro() {
 
       // Renderiza gráficos depois que o DOM atualizar
       this.$nextTick(() => this.renderizarGraficos());
+    },
+
+    async mudarRegime(novo) {
+      if (novo === this.regime) return;
+      this.regime = novo;
+      localStorage.setItem('nexum_regime', novo);
+      await this.carregarDashboard();
     },
 
     // === Orçamento (aba própria) ===
@@ -643,7 +653,7 @@ function financeiro() {
         if (this._chartEvo) { try { this._chartEvo.destroy(); } catch (e) {} }
         this._chartEvo = null;
         try {
-          const evo = await fetch('/api/dashboard/evolucao?meses=12').then(r => r.json());
+          const evo = await fetch(`/api/dashboard/evolucao?meses=12&regime=${this.regime}`).then(r => r.json());
           if (evo.labels && evo.labels.length > 0) {
             // Pós-await: uma chamada concorrente de renderizarGraficos() pode ter
             // criado um chart neste canvas enquanto buscávamos os dados. Destrói
@@ -1703,6 +1713,25 @@ function financeiro() {
       await fetch(`/api/faturas/${id}`, { method: 'DELETE' });
       await this.carregarFaturas();
       await this.carregarDashboard();
+    },
+
+    // Define/limpa a data de pagamento manual de uma fatura de cartão.
+    // valor='' limpa (volta ao automático: pagamento vinculado → vencimento).
+    async salvarPagamentoFatura(f, valor) {
+      try {
+        const r = await fetch(`/api/faturas/${f.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ data_pagamento_manual: valor || null }),
+        });
+        if (!r.ok) throw new Error('falha');
+        await this.carregarFaturas();
+        this.notificar(valor ? 'Data de pagamento definida' : 'Voltou ao automático', 'ok');
+      } catch (e) {
+        console.error('salvarPagamentoFatura:', e);
+        this.notificar('Erro ao salvar data de pagamento', 'erro');
+        await this.carregarFaturas();
+      }
     },
 
     // === Configurações: Perfil / Config ===
