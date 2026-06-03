@@ -494,7 +494,11 @@ def dashboard(
         investido_mes = _calcular_investido(mes)
         investido_mes_anterior = _calcular_investido(mes_anterior) if mes_anterior else 0.0
 
-    # === Resumo de empréstimos a terceiros (do período) ===
+    # === Resumo de empréstimos a terceiros (saldo a receber, ACUMULADO) ===
+    # Saldo de empréstimo é cumulativo ("quanto fulano ainda me deve") — não pode
+    # ser cortado pelo período, senão um empréstimo que começou antes do recorte
+    # (ex.: compras de dez/2025 que caem na fatura de jan/2026) fica de fora e o
+    # saldo aparece errado. Por isso calculamos sobre TODO o histórico.
     cat_emprestimos = db.query(Categoria).filter(
         Categoria.nome == "Empréstimos a Terceiros"
     ).first()
@@ -508,11 +512,8 @@ def dashboard(
         q_emp = db.query(Transacao).filter(
             Transacao.categoria_id == cat_emprestimos.id,
             (Transacao.suspeita_duplicata == False) | Transacao.suspeita_duplicata.is_(None),
+            (Transacao.dividida == False) | Transacao.dividida.is_(None),
         )
-        if modo_periodo:
-            q_emp = q_emp.filter(Transacao.data >= di_obj, Transacao.data <= df_obj)
-        else:
-            q_emp = q_emp.filter(Transacao.mes_referencia == mes)
         emprestimos_lista = q_emp.options(joinedload(Transacao.atribuicao)).all()
         # Agrupa por pessoa
         por_pessoa = {}

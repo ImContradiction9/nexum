@@ -269,7 +269,7 @@
       </div>
     </div>
 
-    <!-- Resumo de empréstimos do período -->
+    <!-- Resumo de empréstimos (saldo acumulado a receber) -->
     <div x-show="dashboard.emprestimos && (dashboard.emprestimos.emprestado > 0 || dashboard.emprestimos.recebido > 0) && !blocoOculto('emprestimos')"
          class="bg-zinc-900/40 border border-zinc-800 rounded-lg p-5 mb-8 relative group">
       <button @click="ocultarBloco('emprestimos')"
@@ -277,8 +277,8 @@
         ocultar
       </button>
       <div class="flex items-baseline justify-between mb-4">
-        <h3 class="text-sm tracking-widest text-zinc-400">Empréstimos a terceiros · período</h3>
-        <span class="text-xs text-zinc-600">Despesa = emprestou · Receita = recebeu de volta</span>
+        <h3 class="text-sm tracking-widest text-zinc-400">Empréstimos a terceiros · acumulado</h3>
+        <span class="text-xs text-zinc-600">Saldo total a receber (todo o histórico) · Despesa = emprestou · Receita = recebeu</span>
       </div>
       <div class="grid grid-cols-3 gap-6 mb-4">
         <div>
