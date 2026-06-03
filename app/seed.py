@@ -60,9 +60,8 @@ CATEGORIAS_PADRAO = [
     ("Transporte",             "Despesa", 200,  "🚕", True),
     ("Manutenção",             "Despesa", 300,  "🔧", True),    # fronteira → essencial
 
-    # === Saúde — todas essenciais ===
-    ("Saúde",                  "Despesa", 400,  "⚕️", True),
-    ("Farmácia",               "Despesa", 200,  "💊", True),
+    # === Saúde — todas essenciais (inclui farmácia) ===
+    ("Saúde",                  "Despesa", 600,  "⚕️", True),
 
     # === Pessoal ===
     ("Vestuário",              "Despesa", 200,  "👕", False),
@@ -237,15 +236,15 @@ REGRAS_PADRAO = [
     ("OI ",                    "Telefone", None, 3, ""),
 
     # === Saúde ===
-    ("DROGARIA", "Farmácia", "Saúde", 5, ""),
-    ("DROGASIL", "Farmácia", "Saúde", 5, ""),
-    ("PACHECO", "Farmácia", "Saúde", 5, ""),
-    ("PAGUE MENOS", "Farmácia", "Saúde", 5, ""),
-    ("RAIA ", "Farmácia", "Saúde", 5, ""),
-    ("ULTRAFARMA", "Farmácia", "Saúde", 5, ""),
-    ("PANVEL", "Farmácia", "Saúde", 5, ""),
-    ("FARMACIA", "Farmácia", "Saúde", 5, ""),
-    ("FARMÁCIA", "Farmácia", "Saúde", 5, ""),
+    ("DROGARIA", "Saúde", None, 5, ""),
+    ("DROGASIL", "Saúde", None, 5, ""),
+    ("PACHECO", "Saúde", None, 5, ""),
+    ("PAGUE MENOS", "Saúde", None, 5, ""),
+    ("RAIA ", "Saúde", None, 5, ""),
+    ("ULTRAFARMA", "Saúde", None, 5, ""),
+    ("PANVEL", "Saúde", None, 5, ""),
+    ("FARMACIA", "Saúde", None, 5, ""),
+    ("FARMÁCIA", "Saúde", None, 5, ""),
     ("HOSPITAL", "Saúde", "Saúde", 5, ""),
     ("CLINICA", "Saúde", "Saúde", 5, ""),
     ("CLÍNICA", "Saúde", "Saúde", 5, ""),
