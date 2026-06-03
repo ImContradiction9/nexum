@@ -115,10 +115,9 @@ def dashboard(
         mes_label = mes
         mes_anterior_label = None  # vai ser calculado depois
 
-    # IDs das categorias especiais a excluir dos totais
+    # IDs das categorias especiais a excluir dos totais (Investimentos e
+    # Empréstimos seguem como categoria; fatura/transferência saem por flag).
     NOMES_ESPECIAIS = [
-        "Pagamento de Fatura",
-        "Transferência entre Contas",
         "Empréstimos a Terceiros",
         "Investimentos",
     ]
@@ -139,10 +138,13 @@ def dashboard(
             Transacao.mes_referencia == mes,
             (Transacao.suspeita_duplicata == False) | Transacao.suspeita_duplicata.is_(None),
         )
-    if not incluir_especiais and ids_especiais:
-        base = base.filter(
-            ~Transacao.categoria_id.in_(ids_especiais) | Transacao.categoria_id.is_(None)
-        )
+    if not incluir_especiais:
+        # Movimentações internas (fatura/transferência) nunca entram nos totais
+        base = base.filter(Transacao.movimentacao.is_(None))
+        if ids_especiais:
+            base = base.filter(
+                ~Transacao.categoria_id.in_(ids_especiais) | Transacao.categoria_id.is_(None)
+            )
 
     # Total de cada categoria especial (pra mostrar separado) — também exclui suspeitas
     totais_especiais = {}
@@ -158,6 +160,21 @@ def dashboard(
         v = q.scalar() or 0
         if v > 0:
             totais_especiais[c.nome] = v
+
+    # Totais das movimentações internas (por flag) — pra exibir "fora dos totais"
+    LABEL_MOV = {"fatura": "Pagamento de Fatura", "transferencia": "Transferência entre Contas"}
+    for flag, label in LABEL_MOV.items():
+        q = db.query(func.sum(Transacao.valor)).filter(
+            Transacao.movimentacao == flag,
+            (Transacao.suspeita_duplicata == False) | Transacao.suspeita_duplicata.is_(None),
+        )
+        if modo_periodo:
+            q = q.filter(Transacao.data >= di_obj, Transacao.data <= df_obj)
+        else:
+            q = q.filter(Transacao.mes_referencia == mes)
+        v = q.scalar() or 0
+        if v > 0:
+            totais_especiais[label] = v
 
     # === Cálculo principal: receitas, despesas, essencial/discricionário ===
     # Em vez de SQL (que não consegue distinguir abatedoras), usamos Python.
@@ -354,10 +371,12 @@ def dashboard(
         if n_ant_total > 0:
             tem_mes_anterior = True
             base_ant = base_ant_query
-            if not incluir_especiais and ids_especiais:
-                base_ant = base_ant.filter(
-                    ~Transacao.categoria_id.in_(ids_especiais) | Transacao.categoria_id.is_(None)
-                )
+            if not incluir_especiais:
+                base_ant = base_ant.filter(Transacao.movimentacao.is_(None))
+                if ids_especiais:
+                    base_ant = base_ant.filter(
+                        ~Transacao.categoria_id.in_(ids_especiais) | Transacao.categoria_id.is_(None)
+                    )
             for tr in base_ant.options(joinedload(Transacao.categoria)).all():
                 valor = tr.valor or 0.0
                 if _eh_abatedora(tr):
@@ -393,10 +412,12 @@ def dashboard(
         if n_ant > 0:
             tem_mes_anterior = True
             base_ant = db.query(Transacao).filter(Transacao.mes_referencia == mes_anterior)
-            if not incluir_especiais and ids_especiais:
-                base_ant = base_ant.filter(
-                    ~Transacao.categoria_id.in_(ids_especiais) | Transacao.categoria_id.is_(None)
-                )
+            if not incluir_especiais:
+                base_ant = base_ant.filter(Transacao.movimentacao.is_(None))
+                if ids_especiais:
+                    base_ant = base_ant.filter(
+                        ~Transacao.categoria_id.in_(ids_especiais) | Transacao.categoria_id.is_(None)
+                    )
             for tr in base_ant.options(joinedload(Transacao.categoria)).all():
                 valor = tr.valor or 0.0
                 if _eh_abatedora(tr):
@@ -555,8 +576,6 @@ def dashboard(
 def evolucao_mensal(meses: int = 12, incluir_especiais: bool = False, db: Session = Depends(get_db)):
     """Retorna receitas e despesas mês a mês, ordenadas cronologicamente."""
     NOMES_ESPECIAIS = [
-        "Pagamento de Fatura",
-        "Transferência entre Contas",
         "Empréstimos a Terceiros",
         "Investimentos",
     ]
@@ -568,10 +587,12 @@ def evolucao_mensal(meses: int = 12, incluir_especiais: bool = False, db: Sessio
         Transacao.tipo,
         func.sum(Transacao.valor),
     )
-    if not incluir_especiais and ids_esp:
-        q = q.filter(
-            ~Transacao.categoria_id.in_(ids_esp) | Transacao.categoria_id.is_(None)
-        )
+    if not incluir_especiais:
+        q = q.filter(Transacao.movimentacao.is_(None))
+        if ids_esp:
+            q = q.filter(
+                ~Transacao.categoria_id.in_(ids_esp) | Transacao.categoria_id.is_(None)
+            )
     rows = q.group_by(Transacao.mes_referencia, Transacao.tipo).all()
 
     # rows: lista de (mes_ref "MM/YYYY", tipo, total)

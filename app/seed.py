@@ -90,8 +90,8 @@ CATEGORIAS_PADRAO = [
     ("Outros recebimentos",    "Receita", 0,    "💵", True),
 
     # === Especiais (não contam nos totais) ===
-    ("Pagamento de Fatura",         "Despesa", 0, "💳", True),
-    ("Transferência entre Contas",  "Despesa", 0, "🔁", True),
+    # Pagamento de fatura e transferência NÃO são categorias — viram a flag
+    # transacoes.movimentacao (detectada na importação / marcada no Extrato).
     ("Empréstimos a Terceiros",     "Despesa", 0, "🤝", True),
     ("Investimentos",               "Despesa", 0, "📈", True),
 ]
@@ -341,12 +341,8 @@ REGRAS_PADRAO = [
     ("ANUIDADE", "Tarifas bancárias", None, 5, ""),
     ("IOF", "Tarifas bancárias", None, 5, ""),
 
-    # === Pagamento de fatura (extratos) — NÃO duplica com a fatura em si ===
-    ("PAGAMENTO DE FATURA", "Pagamento de Fatura", None, 10, "Extrato — pgto fatura cartão"),
-    ("PAGAMENTO FATURA",    "Pagamento de Fatura", None, 10, "Extrato — pgto fatura cartão"),
-    ("PGTO FATURA",         "Pagamento de Fatura", None, 10, "Extrato — pgto fatura cartão"),
-    ("BANCO IBI",           "Pagamento de Fatura", None, 10, "= Bradescard / Bradesco fatura"),
-    ("BRADESCARD",          "Pagamento de Fatura", None, 10, "Pgto fatura Bradesco"),
+    # Pagamento de fatura: NÃO é categoria nem regra — é detectado na importação
+    # (importacao._eh_pagamento_fatura) e vira a flag movimentacao="fatura".
 
     # === Investimentos (aplicações em renda fixa/variável) ===
     # Categoria especial: não conta em despesas, abate via módulo Investimentos.

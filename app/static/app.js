@@ -2208,6 +2208,31 @@ function financeiro() {
       }
     },
 
+    // Marca/desmarca uma transação do extrato como movimentação interna
+    // (pagamento de fatura / transferência). Some da lista de Transações e
+    // dos totais; valor vazio devolve a transação ao fluxo normal.
+    async marcarMovimentacao(t, tipo) {
+      const valor = (tipo === 'fatura' || tipo === 'transferencia') ? tipo : null;
+      try {
+        const r = await fetch(`/api/transacoes/${t.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ movimentacao: valor }),
+        });
+        if (!r.ok) throw new Error('patch falhou');
+        t.movimentacao = valor;
+        if (valor) { t.categoria = null; t.categoria_icone = null; }
+        this.notificar(
+          valor === 'fatura' ? 'Marcada como pagamento de fatura'
+          : valor === 'transferencia' ? 'Marcada como transferência'
+          : 'Voltou a ser transação normal', 'ok');
+      } catch (e) {
+        console.error('Erro ao marcar movimentação:', e);
+        this.notificar('Erro ao marcar movimentação', 'erro');
+        await this.carregarExtrato();
+      }
+    },
+
     async salvarSaldoManual() {
       const valor = parseFloat(this.modalSaldo.valor);
       if (isNaN(valor)) {

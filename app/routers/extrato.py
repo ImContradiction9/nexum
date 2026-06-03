@@ -108,6 +108,7 @@ def extrato_conta(
             "categoria_icone": t.categoria.icone if t.categoria else None,
             "atribuicao": t.atribuicao.nome if t.atribuicao else None,
             "atribuicao_cor": t.atribuicao.cor if t.atribuicao else None,
+            "movimentacao": t.movimentacao,
         })
 
     # Lista meses disponíveis pra essa conta (ordem cronológica)

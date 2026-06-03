@@ -157,6 +157,11 @@ class Transacao(Base):
     # Usuário decide manualmente se aceita (vira False) ou descarta (delete).
     # Enquanto True, a transação NÃO conta em totais/agregações.
     suspeita_duplicata = Column(Boolean, default=False)
+    # Movimentação interna (não é "categoria"): pagamento de fatura de cartão ou
+    # transferência entre contas próprias. Quando setada (não-None), a transação
+    # NÃO aparece na lista de Transações nem conta nos totais — fica só no Extrato.
+    # Valores: None (transação normal) | "fatura" | "transferencia".
+    movimentacao = Column(String, nullable=True, index=True)
 
     observacoes = Column(Text)
     cartao_final = Column(String)                               # últimos 4 dígitos
@@ -471,9 +476,56 @@ def _aplicar_migracoes(engine):
     add_column_if_missing("patrimonio_snapshot", "patrimonio_brl", "FLOAT")
 
     add_column_if_missing("operacoes_investimento", "resgate_total", "BOOLEAN DEFAULT 0")
+    # v1.15 — movimentação interna (pagamento de fatura / transferência) deixa de ser
+    # categoria e vira flag na transação. Migra dados antigos e remove as 2 categorias.
+    add_column_if_missing("transacoes", "movimentacao", "VARCHAR")
+    _migrar_movimentacao(engine)
     _autofill_cdi_percentual(engine)
     # v1.7 — remove unique constraint do nome da conta (permite múltiplas com mesmo nome)
     _drop_unique_index_se_existir(engine, "contas", "nome")
+
+
+def _migrar_movimentacao(engine):
+    """Converte as categorias especiais 'Pagamento de Fatura' e 'Transferência entre
+    Contas' na flag transacoes.movimentacao e remove as categorias.
+
+    Idempotente: se as categorias já não existem (instalação nova ou migração já
+    rodada), tudo vira no-op.
+    """
+    from sqlalchemy import text
+    MAPA = {
+        "Pagamento de Fatura": "fatura",
+        "Transferência entre Contas": "transferencia",
+    }
+
+    def _exec(conn, sql, params):
+        # Cada statement é isolado: uma tabela inexistente (ex.: memoria no
+        # primeiro boot) não pode impedir os demais (sobretudo o DELETE).
+        try:
+            conn.execute(text(sql), params)
+        except Exception:
+            pass
+
+    with engine.begin() as conn:
+        try:
+            cats = conn.execute(text("SELECT id, nome FROM categorias")).fetchall()
+        except Exception:
+            return  # tabela categorias ainda não existe (primeiro boot)
+        nome_para_id = {n: i for i, n in cats}
+        for nome, flag in MAPA.items():
+            cat_id = nome_para_id.get(nome)
+            if not cat_id:
+                continue
+            # Transações dessa categoria → flag de movimentação, sem categoria
+            _exec(conn,
+                  "UPDATE transacoes SET movimentacao = :f, categoria_id = NULL, "
+                  "categoria_origem = 'movimentacao' WHERE categoria_id = :id",
+                  {"f": flag, "id": cat_id})
+            # Regras e memórias que apontavam pra ela ficam sem categoria (inócuas)
+            _exec(conn, "UPDATE regras SET categoria_id = NULL WHERE categoria_id = :id", {"id": cat_id})
+            _exec(conn, "UPDATE memoria SET categoria_id = NULL WHERE categoria_id = :id", {"id": cat_id})
+            # Remove a categoria
+            _exec(conn, "DELETE FROM categorias WHERE id = :id", {"id": cat_id})
 
 
 def _autofill_cdi_percentual(engine):

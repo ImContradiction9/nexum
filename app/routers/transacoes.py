@@ -73,9 +73,12 @@ def listar_transacoes(
     if busca:
         q = q.filter(Transacao.descricao.ilike(f"%{busca}%"))
 
-    # Por padrão esconde categorias especiais
-    NOMES_OCULTAS_POR_PADRAO = ["Pagamento de Fatura", "Transferência entre Contas", "Investimentos"]
+    # Por padrão esconde movimentações internas (fatura/transferência) e a
+    # categoria especial Investimentos. O checkbox "incluir_transferencias" mostra tudo.
+    NOMES_OCULTAS_POR_PADRAO = ["Investimentos"]
     if not incluir_transferencias and not categoria_id:
+        # Esconde movimentações internas (geridas no Extrato)
+        q = q.filter(Transacao.movimentacao.is_(None))
         ids_ocultas = [c.id for c in db.query(Categoria).filter(
             Categoria.nome.in_(NOMES_OCULTAS_POR_PADRAO)
         ).all()]
@@ -214,6 +217,7 @@ def _serializar_transacao(t: Transacao) -> dict:
         "essencial": essencial_efetivo,
         "estorno_de_id": t.estorno_de_id,
         "suspeita_duplicata": bool(t.suspeita_duplicata),
+        "movimentacao": t.movimentacao,
         "atribuicao": t.atribuicao.nome if t.atribuicao else None,
         "atribuicao_id": t.atribuicao_id,
         "atribuicao_origem": t.atribuicao_origem,
@@ -345,6 +349,26 @@ def atualizar_transacao(
 
     cat_changed = False
     atr_changed = False
+
+    # Movimentação interna (fatura / transferência): não é categoria.
+    # Setar não-nulo tira a transação da lista/totais; setar None devolve.
+    if "movimentacao" in dados:
+        mov = dados["movimentacao"]
+        if mov in ("", None):
+            t.movimentacao = None
+            # Volta a poder ser categorizada automaticamente/manual
+            if t.categoria_origem == "movimentacao":
+                t.categoria_origem = "nao_categorizado"
+            if t.atribuicao_origem == "movimentacao":
+                t.atribuicao_origem = "nao_categorizado"
+        elif mov in ("fatura", "transferencia"):
+            t.movimentacao = mov
+            t.categoria_id = None
+            t.categoria_origem = "movimentacao"
+            t.atribuicao_id = None
+            t.atribuicao_origem = "movimentacao"
+        else:
+            raise HTTPException(400, "movimentacao inválida (use 'fatura', 'transferencia' ou null)")
 
     if "categoria_id" in dados:
         novo = dados["categoria_id"]

@@ -8,6 +8,7 @@ Suporta:
 Para PDF: dedup por hash do arquivo + hash de cada transação.
 Para OFX: dedup por hash do arquivo + FITID (ID único do banco) por transação.
 """
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -348,20 +349,6 @@ KEYWORDS_PAGAMENTO_FATURA = [
     "pagamento cartao credito",
 ]
 
-# Instituições financeiras que aparecem como contraparte em Pix mas
-# representam transferência interna entre suas contas (recarga / pagamento).
-# Quando o destino/origem do Pix é uma dessas, marcamos como
-# "Transferência entre Contas" (fora dos totais).
-KEYWORDS_TRANSFERENCIA_INTERCONTA = [
-    "mercado pago institui",      # Pix pra conta MP = recarga/pgto
-    "mercado pago ip",
-    "nu pagamentos",              # Pix entre Nubank e outra conta sua
-    "pagseguro",
-    "picpay",
-    "stone instituicao",
-    "rede instituicao",
-]
-
 # Descrições genéricas que indicam cashback de cartão de crédito.
 # No Nubank é "Crédito em conta" com valor pequeno.
 KEYWORDS_CASHBACK = [
@@ -385,33 +372,51 @@ def _eh_pagamento_fatura(descricao: str, forma_pagamento: str) -> bool:
     return any(k in desc_lower for k in KEYWORDS_PAGAMENTO_FATURA)
 
 
+# CNPJ: 00.000.000/0000-00 (com ou sem pontuação). O "/9999-99" é o que distingue de CPF.
+_RE_CNPJ = re.compile(r"\d{2}\.?\d{3}\.?\d{3}/\d{4}-?\d{2}")
+# CPF: 000.000.000-00, inclusive mascarado com '*' (***.123.456-**).
+_RE_CPF = re.compile(r"[\d*]{3}\.?[\d*]{3}\.?[\d*]{3}-?[\d*]{2}")
+
+
+def _parece_pessoa_fisica(descricao: str) -> bool:
+    """
+    Heurística PF vs PJ a partir da descrição do extrato.
+      - Se há um CNPJ → é PJ → NÃO é pessoa física.
+      - Caso contrário (com ou sem CPF visível) → trata como pessoa física.
+    """
+    desc = descricao or ""
+    if _RE_CNPJ.search(desc):
+        return False
+    return True
+
+
 def _eh_transferencia_interconta(descricao: str, nomes_familia: list = None) -> bool:
     """
-    Detecta se uma transação é transferência entre contas próprias OU entre
-    membros da família (conta efetivamente compartilhada).
+    Detecta transferência entre contas próprias / da família (não conta nos totais).
 
-    Heurísticas:
-      1. Descrição contém o nome de alguém da família (Pix entre vocês)
-      2. Contraparte é instituição financeira de conta digital (MP, PicPay, etc.)
+    Critérios (TODOS precisam bater):
+      1. A descrição contém o nome de um titular (você ou família) — exige pelo
+         menos 2 partes do nome em comum, pra evitar falso positivo com lojas que
+         compartilham só o primeiro nome (ex: "Micael Calçados Ltda" não bate com
+         "Micael Italo da Silva").
+      2. A contraparte parece pessoa física (não tem CNPJ na descrição).
 
-    A detecção #1 exige pelo menos 2 partes do nome em comum (evita falso positivo
-    com pessoas de mesmo primeiro nome — ex: "Micael Calçados Ltda" não bate
-    com "Micael Italo da Silva Salvador" porque só "Micael" é comum).
+    Transferência via instituição/PJ NÃO é auto-marcada (o usuário pode marcar
+    manualmente no Extrato, se quiser).
     """
     desc_lower = (descricao or "").lower()
 
-    # 1. Nome de alguém da família aparece como remetente/destinatário
+    nome_bate = False
     for nome in (nomes_familia or []):
         if not nome:
             continue
         partes = [p.lower() for p in nome.split() if len(p) >= 4]
         # Precisa bater pelo menos 2 partes do nome
-        matches = sum(1 for p in partes if p in desc_lower)
-        if matches >= 2:
-            return True
+        if sum(1 for p in partes if p in desc_lower) >= 2:
+            nome_bate = True
+            break
 
-    # 2. Contraparte é instituição financeira / conta digital
-    return any(k in desc_lower for k in KEYWORDS_TRANSFERENCIA_INTERCONTA)
+    return nome_bate and _parece_pessoa_fisica(descricao)
 
 
 def _eh_cashback(descricao: str, valor: float, tipo: str) -> bool:
@@ -543,27 +548,9 @@ def importar_ofx(session: Session, ofx_path: str, conta_id_override: int = None)
     session.add(fatura)
     session.flush()
 
-    # 5. Categorias especiais (cria se não existirem)
-    cat_pgto_fatura = session.query(Categoria).filter(
-        Categoria.nome == "Pagamento de Fatura"
-    ).first()
-    if cat_pgto_fatura is None:
-        cat_pgto_fatura = Categoria(
-            nome="Pagamento de Fatura", tipo="Despesa", icone="💳", orcamento_mensal=0,
-        )
-        session.add(cat_pgto_fatura)
-        session.flush()
-
-    cat_transferencia = session.query(Categoria).filter(
-        Categoria.nome == "Transferência entre Contas"
-    ).first()
-    if cat_transferencia is None:
-        cat_transferencia = Categoria(
-            nome="Transferência entre Contas", tipo="Despesa", icone="🔁", orcamento_mensal=0,
-        )
-        session.add(cat_transferencia)
-        session.flush()
-
+    # 5. Categoria Cashback (única especial que continua categoria — é receita real).
+    # Pagamento de fatura e transferência NÃO são categorias: viram a flag
+    # transacoes.movimentacao (fora dos totais, geridas no Extrato).
     cat_cashback = session.query(Categoria).filter(
         Categoria.nome == "Cashback"
     ).first()
@@ -574,8 +561,9 @@ def importar_ofx(session: Session, ofx_path: str, conta_id_override: int = None)
         session.add(cat_cashback)
         session.flush()
 
-    # Lê nomes da família das configurações (pra detectar Pix interno)
-    # Aceita: "nome_usuario" (o seu) + "familia_nomes" (lista separada por ;)
+    # Nomes de titulares (pra detectar transferência interna por Pix entre vocês).
+    # Fontes: config "nome_usuario", config "familia_nomes" (separada por ;) e os
+    # titulares cadastrados nas contas.
     from .database import Configuracao
     nomes_familia = []
     cfg_user = session.query(Configuracao).filter(Configuracao.chave == "nome_usuario").first()
@@ -585,6 +573,9 @@ def importar_ofx(session: Session, ofx_path: str, conta_id_override: int = None)
     if cfg_fam and cfg_fam.valor:
         # Lista separada por ; (uma pessoa por entrada)
         nomes_familia.extend([n.strip() for n in cfg_fam.valor.split(";") if n.strip()])
+    for c in session.query(Conta).filter(Conta.titular.isnot(None), Conta.titular != "").all():
+        if c.titular and c.titular not in nomes_familia:
+            nomes_familia.append(c.titular)
 
     # 6. Insere transações
     n_inseridas = 0
@@ -626,16 +617,15 @@ def importar_ofx(session: Session, ofx_path: str, conta_id_override: int = None)
         eh_transf = _eh_transferencia_interconta(t["descricao"], nomes_familia)
         eh_cb = _eh_cashback(t["descricao"], t["valor"], t["tipo"])
 
-        if eh_pf:
-            categoria_id = cat_pgto_fatura.id
-            categoria_origem = "automatica"
+        movimentacao = None
+        if eh_pf or eh_transf:
+            # Movimentação interna: não é categoria. Fica fora dos totais e da
+            # lista de Transações; gerida no Extrato.
+            movimentacao = "fatura" if eh_pf else "transferencia"
+            categoria_id = None
+            categoria_origem = "movimentacao"
             atribuicao_id = None
-            atribuicao_origem = "nao_categorizado"
-        elif eh_transf:
-            categoria_id = cat_transferencia.id
-            categoria_origem = "automatica"
-            atribuicao_id = None
-            atribuicao_origem = "nao_categorizado"
+            atribuicao_origem = "movimentacao"
         elif eh_cb:
             categoria_id = cat_cashback.id
             categoria_origem = "automatica"
@@ -664,6 +654,7 @@ def importar_ofx(session: Session, ofx_path: str, conta_id_override: int = None)
             categoria_origem=categoria_origem,
             atribuicao_id=atribuicao_id,
             atribuicao_origem=atribuicao_origem,
+            movimentacao=movimentacao,
             hash_dedup=fitid_dedup,
             observacoes=f"Extrato {banco} {mes_ref}",
             suspeita_duplicata=eh_suspeita,
