@@ -846,6 +846,11 @@
             <span x-show="extrato.fonte_saldo === 'manual'" class="text-blue-400">
               ● a partir do saldo cadastrado em <span x-text="extrato.conta.saldo_inicial_data"></span>
             </span>
+            <span x-show="extrato.fonte_saldo === 'calculado'" class="text-zinc-500">
+              ● acumulado das transações (conta iniciada em zero) —
+              <button @click="modalSaldo.show = true; modalSaldo.valor = ''; modalSaldo.data = ''"
+                      class="text-amber-400 hover:text-amber-300 underline">cadastrar saldo inicial</button>
+            </span>
             <span x-show="extrato.fonte_saldo === 'zero'" class="text-amber-600">
               ● começando do zero —
               <button @click="modalSaldo.show = true; modalSaldo.valor = ''; modalSaldo.data = ''"

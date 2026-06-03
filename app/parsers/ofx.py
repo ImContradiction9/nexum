@@ -22,7 +22,7 @@ Esse parser trata os dois usando regex tolerante (não tenta validar XML).
 """
 import re
 import codecs
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 
@@ -289,16 +289,33 @@ def parse_extrato_ofx(pdf_path: str) -> dict:
     # === Saldo final (LEDGERBAL/BALAMT) ===
     # OFX: <LEDGERBAL><BALAMT>1234.56</BALAMT><DTASOF>...</DTASOF></LEDGERBAL>
     saldo_final = None
-    m_bal = re.search(
-        r'<LEDGERBAL>.*?<BALAMT>\s*(-?[\d.,]+)',
-        text, re.IGNORECASE | re.DOTALL,
-    )
-    if m_bal:
-        try:
-            # OFX usa ponto decimal padrão
-            saldo_final = float(m_bal.group(1).replace(",", "."))
-        except ValueError:
-            saldo_final = None
+    saldo_dtasof = None
+    m_ledger = re.search(r'<LEDGERBAL>(.*?)</LEDGERBAL>', text, re.IGNORECASE | re.DOTALL)
+    ledger_blob = m_ledger.group(1) if m_ledger else None
+    if ledger_blob is None:
+        # Tags abertas (sem fechamento): pega um trecho após <LEDGERBAL>
+        m_open = re.search(r'<LEDGERBAL>(.*)$', text, re.IGNORECASE | re.DOTALL)
+        ledger_blob = m_open.group(1)[:400] if m_open else None
+    if ledger_blob:
+        m_bal = re.search(r'<BALAMT>\s*(-?[\d.,]+)', ledger_blob, re.IGNORECASE)
+        if m_bal:
+            try:
+                saldo_final = float(m_bal.group(1).replace(",", "."))
+            except ValueError:
+                saldo_final = None
+        m_asof = re.search(r'<DTASOF>\s*(.+?)(?:</DTASOF>|<|\n|\r|$)', ledger_blob, re.IGNORECASE)
+        if m_asof:
+            saldo_dtasof = _parse_data_ofx(m_asof.group(1))
+
+    # Só confia no saldo se a data do saldo (DTASOF) cair DENTRO do período do
+    # extrato. Vários bancos (ex.: Santander) carimbam o LEDGERBAL com o saldo
+    # ATUAL no momento da exportação — não o saldo no fim do período. Usar isso
+    # inflaria o saldo inicial calculado (bug do "saldo inicial fantasma").
+    if saldo_final is not None and saldo_dtasof is not None and dt_end is not None:
+        limite = dt_end + timedelta(days=2)   # tolera carimbo no 1º dia útil seguinte
+        dentro = saldo_dtasof <= limite and (dt_start is None or saldo_dtasof >= dt_start)
+        if not dentro:
+            saldo_final = None   # saldo é um snapshot atual, não do período → descarta
 
     # Saldo inicial = saldo final - soma das transações líquidas
     # (cada TRNAMT já tem sinal correto: + entrada, - saída)

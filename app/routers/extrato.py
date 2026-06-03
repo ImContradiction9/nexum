@@ -83,10 +83,24 @@ def extrato_conta(
             saldo_inicial = conta.saldo_inicial_manual
             fonte_saldo = "manual"
 
-    # 3. Fallback: zero
+    # 3. Fallback: assume conta iniciada em zero e ACUMULA todas as transações
+    #    anteriores ao período visível. Dá continuidade real entre os meses
+    #    (mês N abre onde o mês N-1 fechou), sem depender do LEDGERBAL do OFX
+    #    — que em alguns bancos (Santander) é o saldo atual, não o do período.
     if saldo_inicial is None:
-        saldo_inicial = 0
-        fonte_saldo = "zero"
+        if transacoes:
+            primeira_data = transacoes[0].data
+            anteriores = db.query(Transacao).filter(
+                Transacao.conta_id == conta_id,
+                Transacao.data < primeira_data,
+            ).all()
+            saldo_inicial = sum(
+                (t.valor if t.tipo == "Receita" else -t.valor) for t in anteriores
+            )
+            fonte_saldo = "calculado"
+        else:
+            saldo_inicial = 0
+            fonte_saldo = "zero"
 
     # Aplica saldo acumulado linha por linha
     items = []

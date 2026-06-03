@@ -480,6 +480,9 @@ def _aplicar_migracoes(engine):
     # categoria e vira flag na transação. Migra dados antigos e remove as 2 categorias.
     add_column_if_missing("transacoes", "movimentacao", "VARCHAR")
     _migrar_movimentacao(engine)
+    # v1.16 — zera saldos OFX que são snapshot atual (não do período): detecta
+    # pela quebra de encadeamento entre meses (Santander carimba saldo atual).
+    _corrigir_saldos_ofx_inconfiaveis(engine)
     _autofill_cdi_percentual(engine)
     # v1.7 — remove unique constraint do nome da conta (permite múltiplas com mesmo nome)
     _drop_unique_index_se_existir(engine, "contas", "nome")
@@ -526,6 +529,47 @@ def _migrar_movimentacao(engine):
             _exec(conn, "UPDATE memoria SET categoria_id = NULL WHERE categoria_id = :id", {"id": cat_id})
             # Remove a categoria
             _exec(conn, "DELETE FROM categorias WHERE id = :id", {"id": cat_id})
+
+
+def _corrigir_saldos_ofx_inconfiaveis(engine):
+    """Zera saldo_inicial/saldo_final de faturas (extratos OFX) cujo saldo é um
+    'snapshot atual' do banco, não o saldo do fim do período.
+
+    Detecção: dentro de uma mesma conta, faturas confiáveis encadeiam — o
+    saldo_inicial de um mês == saldo_final do mês anterior. Se QUALQUER par
+    consecutivo não encadeia, os saldos daquela conta vêm do LEDGERBAL atual
+    (ex.: Santander) e não servem; zera todos pra cair no cálculo acumulado.
+
+    Idempotente: depois de zerar, as linhas saem do SELECT (saldos NULL) e
+    nenhuma quebra é mais detectada.
+    """
+    from sqlalchemy import text
+    from collections import defaultdict
+    with engine.begin() as conn:
+        try:
+            rows = conn.execute(text(
+                "SELECT id, conta_id, periodo_inicio, saldo_inicial, saldo_final "
+                "FROM faturas "
+                "WHERE saldo_inicial IS NOT NULL AND saldo_final IS NOT NULL "
+                "ORDER BY conta_id, periodo_inicio"
+            )).fetchall()
+        except Exception:
+            return  # tabela faturas ainda não existe
+        por_conta = defaultdict(list)
+        for r in rows:
+            por_conta[r[1]].append(r)
+        contas_quebradas = set()
+        for conta_id, fts in por_conta.items():
+            for prev, cur in zip(fts, fts[1:]):
+                # saldo_inicial do atual deve bater com saldo_final do anterior
+                if abs((cur[3] or 0) - (prev[4] or 0)) > 0.01:
+                    contas_quebradas.add(conta_id)
+                    break
+        for conta_id in contas_quebradas:
+            conn.execute(text(
+                "UPDATE faturas SET saldo_inicial = NULL, saldo_final = NULL "
+                "WHERE conta_id = :c"
+            ), {"c": conta_id})
 
 
 def _autofill_cdi_percentual(engine):
