@@ -242,6 +242,8 @@ function financeiro() {
       items: [],
     },
     modalSaldo: { show: false, valor: '', data: '' },
+    // Modal de divisão: paiId = transação original; partes = [{valor, categoria_id, atribuicao_id}]
+    modalDividir: { show: false, paiId: null, descricao: '', valorTotal: 0, partes: [], jaDividida: false },
 
     // === Investimentos ===
     ativos: [],
@@ -1069,6 +1071,99 @@ function financeiro() {
         console.error('Erro em atualizarTransacao:', e);
         this.notificar('Erro inesperado: ' + e.message, 'erro');
         await this.carregarTransacoes();
+      }
+    },
+
+    // === Divisão de transação em partes ===
+    async abrirDividir(t) {
+      // Resolve o pai (se clicou numa filha) e carrega as partes atuais.
+      try {
+        const r = await fetch(`/api/transacoes/${t.id}/partes`);
+        if (!r.ok) throw new Error('falha ao carregar partes');
+        const data = await r.json();
+        const pai = data.pai;
+        let partes = (data.partes || []).map(p => ({
+          valor: Number(p.valor).toFixed(2),
+          categoria_id: p.categoria_id || '',
+          atribuicao_id: p.atribuicao_id || '',
+        }));
+        if (partes.length === 0) {
+          // Ainda não dividida: começa com 2 partes em branco (1ª com o valor cheio)
+          partes = [
+            { valor: Number(pai.valor).toFixed(2), categoria_id: pai.categoria_id || '', atribuicao_id: pai.atribuicao_id || '' },
+            { valor: '', categoria_id: '', atribuicao_id: '' },
+          ];
+        }
+        this.modalDividir = {
+          show: true,
+          paiId: pai.id,
+          descricao: pai.descricao_personalizada || pai.descricao,
+          valorTotal: Number(pai.valor),
+          partes,
+          jaDividida: (data.partes || []).length > 0,
+        };
+      } catch (e) {
+        console.error('abrirDividir:', e);
+        this.notificar('Erro ao abrir divisão', 'erro');
+      }
+    },
+    addParte() {
+      this.modalDividir.partes.push({ valor: '', categoria_id: '', atribuicao_id: '' });
+    },
+    removerParte(i) {
+      this.modalDividir.partes.splice(i, 1);
+    },
+    somaPartes() {
+      return this.modalDividir.partes.reduce((s, p) => s + (parseFloat(p.valor) || 0), 0);
+    },
+    restanteDivisao() {
+      return Math.round((this.modalDividir.valorTotal - this.somaPartes()) * 100) / 100;
+    },
+    divisaoFecha() {
+      return Math.abs(this.restanteDivisao()) < 0.01 && this.modalDividir.partes.length >= 1;
+    },
+    async salvarDivisao() {
+      if (!this.divisaoFecha()) {
+        this.notificar('A soma das partes precisa fechar com o valor total', 'erro');
+        return;
+      }
+      const corpo = this.modalDividir.partes.map(p => ({
+        valor: parseFloat(p.valor),
+        categoria_id: p.categoria_id ? parseInt(p.categoria_id) : null,
+        atribuicao_id: p.atribuicao_id ? parseInt(p.atribuicao_id) : null,
+      }));
+      try {
+        const r = await fetch(`/api/transacoes/${this.modalDividir.paiId}/partes`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(corpo),
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          throw new Error(err.detail || 'falha ao dividir');
+        }
+        this.modalDividir.show = false;
+        await this.carregarTransacoes();
+        this.notificar('Transação dividida em ' + corpo.length + ' partes', 'ok');
+      } catch (e) {
+        console.error('salvarDivisao:', e);
+        this.notificar(e.message || 'Erro ao dividir', 'erro');
+      }
+    },
+    async desfazerDivisao() {
+      try {
+        const r = await fetch(`/api/transacoes/${this.modalDividir.paiId}/partes`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify([]),
+        });
+        if (!r.ok) throw new Error('falha ao desfazer');
+        this.modalDividir.show = false;
+        await this.carregarTransacoes();
+        this.notificar('Divisão desfeita', 'ok');
+      } catch (e) {
+        console.error('desfazerDivisao:', e);
+        this.notificar('Erro ao desfazer divisão', 'erro');
       }
     },
 

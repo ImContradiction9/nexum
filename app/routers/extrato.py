@@ -38,6 +38,10 @@ def extrato_conta(
     if mes:
         q = q.filter(Transacao.mes_referencia == mes)
 
+    # Esconde as PARTES de transações divididas (filhas): o extrato mostra o
+    # movimento real do banco (o pai). Senão o saldo acumulado duplicaria.
+    q = q.filter(Transacao.parte_de_id.is_(None))
+
     # Ordem cronológica (mais antigo primeiro)
     transacoes = q.order_by(Transacao.data.asc(), Transacao.id.asc()).all()
 
@@ -123,6 +127,7 @@ def extrato_conta(
             "atribuicao": t.atribuicao.nome if t.atribuicao else None,
             "atribuicao_cor": t.atribuicao.cor if t.atribuicao else None,
             "movimentacao": t.movimentacao,
+            "dividida": bool(t.dividida),
         })
 
     # Lista meses disponíveis pra essa conta (ordem cronológica)

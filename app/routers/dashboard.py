@@ -39,6 +39,7 @@ def orcamentos(mes: Optional[str] = None, db: Session = Depends(get_db)):
                  Transacao.mes_referencia == mes,
                  Transacao.categoria_id.in_(ids),
                  (Transacao.suspeita_duplicata == False) | Transacao.suspeita_duplicata.is_(None),
+                 (Transacao.dividida == False) | Transacao.dividida.is_(None),
              ).all())
     for tr in trans:
         v = tr.valor or 0.0
@@ -138,6 +139,8 @@ def dashboard(
             Transacao.mes_referencia == mes,
             (Transacao.suspeita_duplicata == False) | Transacao.suspeita_duplicata.is_(None),
         )
+    # O pai de uma transação dividida NUNCA entra nos totais (as filhas é que contam)
+    base = base.filter((Transacao.dividida == False) | Transacao.dividida.is_(None))
     if not incluir_especiais:
         # Movimentações internas (fatura/transferência) nunca entram nos totais
         base = base.filter(Transacao.movimentacao.is_(None))
@@ -152,6 +155,7 @@ def dashboard(
         q = db.query(func.sum(Transacao.valor)).filter(
             Transacao.categoria_id == c.id,
             (Transacao.suspeita_duplicata == False) | Transacao.suspeita_duplicata.is_(None),
+            (Transacao.dividida == False) | Transacao.dividida.is_(None),
         )
         if modo_periodo:
             q = q.filter(Transacao.data >= di_obj, Transacao.data <= df_obj)
@@ -167,6 +171,7 @@ def dashboard(
         q = db.query(func.sum(Transacao.valor)).filter(
             Transacao.movimentacao == flag,
             (Transacao.suspeita_duplicata == False) | Transacao.suspeita_duplicata.is_(None),
+            (Transacao.dividida == False) | Transacao.dividida.is_(None),
         )
         if modo_periodo:
             q = q.filter(Transacao.data >= di_obj, Transacao.data <= df_obj)
@@ -371,6 +376,7 @@ def dashboard(
         if n_ant_total > 0:
             tem_mes_anterior = True
             base_ant = base_ant_query
+            base_ant = base_ant.filter((Transacao.dividida == False) | Transacao.dividida.is_(None))
             if not incluir_especiais:
                 base_ant = base_ant.filter(Transacao.movimentacao.is_(None))
                 if ids_especiais:
@@ -412,6 +418,7 @@ def dashboard(
         if n_ant > 0:
             tem_mes_anterior = True
             base_ant = db.query(Transacao).filter(Transacao.mes_referencia == mes_anterior)
+            base_ant = base_ant.filter((Transacao.dividida == False) | Transacao.dividida.is_(None))
             if not incluir_especiais:
                 base_ant = base_ant.filter(Transacao.movimentacao.is_(None))
                 if ids_especiais:
@@ -586,7 +593,7 @@ def evolucao_mensal(meses: int = 12, incluir_especiais: bool = False, db: Sessio
         Transacao.mes_referencia,
         Transacao.tipo,
         func.sum(Transacao.valor),
-    )
+    ).filter((Transacao.dividida == False) | Transacao.dividida.is_(None))
     if not incluir_especiais:
         q = q.filter(Transacao.movimentacao.is_(None))
         if ids_esp:

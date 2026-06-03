@@ -102,6 +102,10 @@ def listar_transacoes(
             (Transacao.suspeita_duplicata == False) | Transacao.suspeita_duplicata.is_(None)
         )
 
+    # Esconde transações "pai" que foram divididas em partes (as filhas é que
+    # aparecem, cada uma com sua categoria/atribuição). O pai segue visível no Extrato.
+    q = q.filter((Transacao.dividida == False) | Transacao.dividida.is_(None))
+
     total = q.count()
     items = q.order_by(Transacao.data.desc(), Transacao.id.desc()).offset(skip).limit(limit).all()
 
@@ -218,6 +222,8 @@ def _serializar_transacao(t: Transacao) -> dict:
         "estorno_de_id": t.estorno_de_id,
         "suspeita_duplicata": bool(t.suspeita_duplicata),
         "movimentacao": t.movimentacao,
+        "dividida": bool(t.dividida),
+        "parte_de_id": t.parte_de_id,
         "atribuicao": t.atribuicao.nome if t.atribuicao else None,
         "atribuicao_id": t.atribuicao_id,
         "atribuicao_origem": t.atribuicao_origem,
@@ -602,9 +608,110 @@ def excluir_transacao(trans_id: int, db: Session = Depends(get_db)):
     t = db.query(Transacao).get(trans_id)
     if not t:
         raise HTTPException(404, "Transação não encontrada")
+    # Se for um pai dividido, apaga as filhas junto.
+    db.query(Transacao).filter(Transacao.parte_de_id == trans_id).delete(synchronize_session=False)
     db.delete(t)
     db.commit()
     return {"ok": True}
+
+
+def _serializar_parte(t: Transacao) -> dict:
+    return {
+        "id": t.id,
+        "valor": t.valor,
+        "categoria_id": t.categoria_id,
+        "atribuicao_id": t.atribuicao_id,
+        "descricao_personalizada": t.descricao_personalizada,
+    }
+
+
+@router.get("/api/transacoes/{trans_id}/partes")
+def listar_partes(trans_id: int, db: Session = Depends(get_db)):
+    """Retorna o pai (transação original) e suas partes. Aceita o id do pai OU
+    de uma filha (resolve o pai por parte_de_id)."""
+    t = db.query(Transacao).get(trans_id)
+    if not t:
+        raise HTTPException(404, "Transação não encontrada")
+    pai = db.query(Transacao).get(t.parte_de_id) if t.parte_de_id else t
+    if not pai:
+        raise HTTPException(404, "Transação original não encontrada")
+    partes = db.query(Transacao).filter(
+        Transacao.parte_de_id == pai.id
+    ).order_by(Transacao.id.asc()).all()
+    return {
+        "pai": _serializar_transacao(pai),
+        "partes": [_serializar_parte(p) for p in partes],
+    }
+
+
+@router.put("/api/transacoes/{trans_id}/partes")
+def definir_partes(trans_id: int, partes: list[dict], db: Session = Depends(get_db)):
+    """Divide uma transação em partes (transações-filhas), cada uma com seu
+    valor/categoria/atribuição. A soma das partes deve fechar com o valor do pai.
+    Lista vazia desfaz a divisão. Aceita id do pai OU de uma filha existente."""
+    t = db.query(Transacao).get(trans_id)
+    if not t:
+        raise HTTPException(404, "Transação não encontrada")
+    pai = db.query(Transacao).get(t.parte_de_id) if t.parte_de_id else t
+    if not pai:
+        raise HTTPException(404, "Transação original não encontrada")
+    if pai.parte_de_id:
+        raise HTTPException(400, "Não é possível dividir uma parte de outra divisão")
+
+    # Apaga as partes atuais (vamos recriar do zero)
+    db.query(Transacao).filter(Transacao.parte_de_id == pai.id).delete(synchronize_session=False)
+
+    # Lista vazia → desfaz a divisão
+    if not partes:
+        pai.dividida = False
+        db.commit()
+        db.refresh(pai)
+        return {"ok": True, "dividida": False, "partes": []}
+
+    # Valida valores e soma
+    valores = []
+    for p in partes:
+        try:
+            v = round(abs(float(p.get("valor"))), 2)
+        except (TypeError, ValueError):
+            raise HTTPException(400, "Cada parte precisa de um valor numérico")
+        if v <= 0:
+            raise HTTPException(400, "Cada parte precisa de valor maior que zero")
+        valores.append(v)
+    soma = round(sum(valores), 2)
+    alvo = round(pai.valor or 0, 2)
+    if abs(soma - alvo) > 0.01:
+        raise HTTPException(400, f"A soma das partes (R$ {soma:.2f}) precisa fechar com o valor (R$ {alvo:.2f})")
+
+    # Cria as filhas herdando o essencial do pai
+    criadas = []
+    for p, v in zip(partes, valores):
+        filho = Transacao(
+            parte_de_id=pai.id,
+            conta_id=pai.conta_id,
+            data=pai.data,
+            descricao=pai.descricao,
+            descricao_normalizada=pai.descricao_normalizada,
+            descricao_personalizada=p.get("descricao_personalizada") or None,
+            valor=v,
+            tipo=pai.tipo,
+            forma_pagamento=pai.forma_pagamento,
+            mes_referencia=pai.mes_referencia,
+            categoria_id=p.get("categoria_id"),
+            categoria_origem="manual",
+            atribuicao_id=p.get("atribuicao_id"),
+            atribuicao_origem="manual",
+            cartao_final=pai.cartao_final,
+            suspeita_duplicata=False,
+        )
+        db.add(filho)
+        criadas.append(filho)
+
+    pai.dividida = True
+    db.commit()
+    for f in criadas:
+        db.refresh(f)
+    return {"ok": True, "dividida": True, "partes": [_serializar_parte(f) for f in criadas]}
 
 
 @router.put("/api/transacoes/{trans_id}/divisoes")

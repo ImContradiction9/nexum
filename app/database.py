@@ -174,6 +174,14 @@ class Transacao(Base):
     duplicata_de_id = Column(Integer, ForeignKey("transacoes.id"))   # quando marcada como duplicata
     pagamento_de_fatura_id = Column(Integer, ForeignKey("faturas.id"))  # transação que paga uma fatura
 
+    # Divisão em partes: a transação original (movimento real do banco) vira "pai"
+    # (dividida=True) e é quebrada em N filhas, cada uma com seu valor/categoria/
+    # atribuição. O pai NÃO conta em totais nem na lista de Transações (mas aparece
+    # no Extrato, pois é o movimento real); as filhas (parte_de_id setado) contam
+    # nos totais/categorias e NÃO aparecem no Extrato (senão duplicaria o saldo).
+    parte_de_id = Column(Integer, ForeignKey("transacoes.id"))  # setado nas filhas → aponta o pai
+    dividida = Column(Boolean, default=False)                   # True no pai dividido
+
     importada_em = Column(DateTime, default=datetime.utcnow)
     hash_dedup = Column(String, index=True)                     # banco+data+valor+desc → detecta duplicata
 
@@ -485,6 +493,9 @@ def _aplicar_migracoes(engine):
     _corrigir_saldos_ofx_inconfiaveis(engine)
     # v1.17 — mescla a categoria "Salário" em "Pró-labore" (mantém Pró-labore).
     _merge_categoria(engine, "Salário", "Pró-labore")
+    # v1.18 — divisão de transação em partes (transações-filhas)
+    add_column_if_missing("transacoes", "parte_de_id", "INTEGER")
+    add_column_if_missing("transacoes", "dividida", "BOOLEAN DEFAULT 0")
     _autofill_cdi_percentual(engine)
     # v1.7 — remove unique constraint do nome da conta (permite múltiplas com mesmo nome)
     _drop_unique_index_se_existir(engine, "contas", "nome")

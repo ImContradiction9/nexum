@@ -734,7 +734,15 @@
               <td class="px-4 py-2.5 max-w-xs">
                 <div class="text-zinc-400 text-xs truncate flex items-center gap-1.5" :title="t.descricao">
                   <span x-show="t.estorno_de_id" class="text-emerald-400" title="Estorno de uma compra anterior">↶</span>
+                  <span x-show="t.parte_de_id" class="text-amber-400" title="Parte de uma transação dividida">✂</span>
                   <span x-text="t.descricao"></span>
+                  <!-- Dividir (transação inteira) ou editar divisão (parte) -->
+                  <button x-show="!t.parte_de_id" @click="abrirDividir(t)"
+                          class="ml-auto shrink-0 opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-amber-400 transition"
+                          title="Dividir em partes">✂</button>
+                  <button x-show="t.parte_de_id" @click="abrirDividir(t)"
+                          class="ml-auto shrink-0 text-zinc-600 hover:text-amber-400 transition"
+                          title="Editar divisão">✎</button>
                 </div>
                 <div x-show="t.parcela" class="text-xs text-zinc-600 mt-0.5">parc. <span x-text="t.parcela" class="font-mono"></span></div>
               </td>
@@ -2555,6 +2563,65 @@
         <button @click="salvarSaldoManual()"
                 class="bg-amber-500 hover:bg-amber-400 text-zinc-950 px-4 py-2 text-sm rounded">
           Salvar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: dividir transação em partes ============ -->
+  <div x-show="modalDividir.show" x-transition class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+    <div class="bg-zinc-900 border border-zinc-800 rounded-lg max-w-2xl w-full p-6">
+      <h3 class="font-serif text-xl mb-1">Dividir transação</h3>
+      <p class="text-sm text-zinc-400 mb-1" x-text="modalDividir.descricao"></p>
+      <p class="text-xs text-zinc-500 mb-4">
+        Valor total: <span class="font-mono text-zinc-300" x-text="brl(modalDividir.valorTotal)"></span>
+        — quebre em partes com categoria e atribuição próprias.
+      </p>
+
+      <div class="space-y-2 mb-3 max-h-80 overflow-y-auto">
+        <template x-for="(p, i) in modalDividir.partes" :key="i">
+          <div class="flex items-center gap-2">
+            <input type="number" step="0.01" x-model="p.valor" placeholder="0,00"
+                   class="w-28 bg-zinc-950 border border-zinc-700 px-2 py-1.5 text-sm rounded font-mono">
+            <select x-model="p.categoria_id"
+                    class="flex-1 bg-zinc-950 border border-zinc-700 px-2 py-1.5 text-xs rounded">
+              <option value="">— categoria —</option>
+              <template x-for="c in categorias" :key="c.id">
+                <option :value="c.id" x-text="c.nome"></option>
+              </template>
+            </select>
+            <select x-model="p.atribuicao_id"
+                    class="flex-1 bg-zinc-950 border border-zinc-700 px-2 py-1.5 text-xs rounded">
+              <option value="">— atribuição —</option>
+              <template x-for="a in atribuicoes" :key="a.id">
+                <option :value="a.id" x-text="a.nome"></option>
+              </template>
+            </select>
+            <button @click="removerParte(i)" class="text-zinc-600 hover:text-red-400 px-1" title="Remover parte">✕</button>
+          </div>
+        </template>
+      </div>
+
+      <button @click="addParte()" class="text-xs text-amber-400 hover:text-amber-300 mb-4">+ adicionar parte</button>
+
+      <div class="flex items-center justify-between text-sm mb-5 border-t border-zinc-800 pt-3">
+        <span class="text-zinc-400">Soma das partes: <span class="font-mono" x-text="brl(somaPartes())"></span></span>
+        <span x-show="divisaoFecha()" class="text-emerald-400">✓ fecha com o total</span>
+        <span x-show="!divisaoFecha()" class="text-amber-400 font-mono"
+              x-text="(restanteDivisao() > 0 ? 'faltam ' : 'sobra ') + brl(Math.abs(restanteDivisao()))"></span>
+      </div>
+
+      <div class="flex justify-end gap-2">
+        <button x-show="modalDividir.jaDividida" @click="desfazerDivisao()"
+                class="px-4 py-2 text-sm text-red-400 hover:text-red-300 mr-auto">
+          Desfazer divisão
+        </button>
+        <button @click="modalDividir.show = false" class="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200">
+          Cancelar
+        </button>
+        <button @click="salvarDivisao()" :disabled="!divisaoFecha()"
+                class="bg-amber-500 hover:bg-amber-400 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-950 px-4 py-2 text-sm rounded">
+          Salvar divisão
         </button>
       </div>
     </div>
