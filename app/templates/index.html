@@ -732,16 +732,16 @@
 
               <!-- Transação (do PDF, imutável) -->
               <td class="px-4 py-2.5 max-w-xs">
-                <div class="text-zinc-400 text-xs truncate flex items-center gap-1.5" :title="t.descricao">
-                  <span x-show="t.estorno_de_id" class="text-emerald-400" title="Estorno de uma compra anterior">↶</span>
-                  <span x-show="t.parte_de_id" class="text-amber-400" title="Parte de uma transação dividida">✂</span>
-                  <span x-text="t.descricao"></span>
+                <div class="text-zinc-400 text-xs flex items-center gap-1.5" :title="t.descricao">
+                  <span x-show="t.estorno_de_id" class="text-emerald-400 shrink-0" title="Estorno de uma compra anterior">↶</span>
+                  <span x-show="t.parte_de_id" class="text-amber-400 shrink-0" title="Parte de uma transação dividida">✂</span>
+                  <span class="truncate min-w-0" x-text="t.descricao"></span>
                   <!-- Dividir (transação inteira) ou editar divisão (parte) -->
                   <button x-show="!t.parte_de_id" @click="abrirDividir(t)"
-                          class="ml-auto shrink-0 opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-amber-400 transition"
+                          class="shrink-0 text-zinc-600 hover:text-amber-400 hover:scale-110 transition"
                           title="Dividir em partes">✂</button>
                   <button x-show="t.parte_de_id" @click="abrirDividir(t)"
-                          class="ml-auto shrink-0 text-zinc-600 hover:text-amber-400 transition"
+                          class="shrink-0 text-zinc-500 hover:text-amber-400 transition"
                           title="Editar divisão">✎</button>
                 </div>
                 <div x-show="t.parcela" class="text-xs text-zinc-600 mt-0.5">parc. <span x-text="t.parcela" class="font-mono"></span></div>
