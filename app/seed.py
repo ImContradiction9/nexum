@@ -82,7 +82,7 @@ CATEGORIAS_PADRAO = [
     ("Outros",                 "Despesa", 200,  "📦", True),    # padrão seguro
 
     # === Receitas — flag essencial não importa, mas precisa ter valor ===
-    ("Salário",                "Receita", 0,    "💰", True),
+    # Pró-labore cobre salário/retirada (Salário foi mesclado nela).
     ("Pró-labore",             "Receita", 0,    "💼", True),
     ("Freelance",              "Receita", 0,    "👨‍💻", True),
     ("Rendimentos",            "Receita", 0,    "📊", True),
@@ -365,10 +365,10 @@ REGRAS_PADRAO = [
     ("INTER DTVM",          "Investimentos", None, 7, "Inter Invest"),
 
     # === Receitas ===
-    ("SALARIO", "Salário", None, 5, ""),
-    ("SALÁRIO", "Salário", None, 5, ""),
-    ("VENCIMENTO", "Salário", None, 5, ""),
-    ("FOLHA PGTO", "Salário", None, 5, ""),
+    ("SALARIO", "Pró-labore", None, 5, ""),
+    ("SALÁRIO", "Pró-labore", None, 5, ""),
+    ("VENCIMENTO", "Pró-labore", None, 5, ""),
+    ("FOLHA PGTO", "Pró-labore", None, 5, ""),
     ("PRO LABORE", "Pró-labore", None, 5, ""),
     ("PRÓ-LABORE", "Pró-labore", None, 5, ""),
     ("PROLABORE", "Pró-labore", None, 5, ""),

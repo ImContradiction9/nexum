@@ -483,6 +483,8 @@ def _aplicar_migracoes(engine):
     # v1.16 — zera saldos OFX que são snapshot atual (não do período): detecta
     # pela quebra de encadeamento entre meses (Santander carimba saldo atual).
     _corrigir_saldos_ofx_inconfiaveis(engine)
+    # v1.17 — mescla a categoria "Salário" em "Pró-labore" (mantém Pró-labore).
+    _merge_categoria(engine, "Salário", "Pró-labore")
     _autofill_cdi_percentual(engine)
     # v1.7 — remove unique constraint do nome da conta (permite múltiplas com mesmo nome)
     _drop_unique_index_se_existir(engine, "contas", "nome")
@@ -529,6 +531,38 @@ def _migrar_movimentacao(engine):
             _exec(conn, "UPDATE memoria SET categoria_id = NULL WHERE categoria_id = :id", {"id": cat_id})
             # Remove a categoria
             _exec(conn, "DELETE FROM categorias WHERE id = :id", {"id": cat_id})
+
+
+def _merge_categoria(engine, de_nome: str, para_nome: str):
+    """Mescla a categoria `de_nome` em `para_nome`: repointa transações, regras
+    e memórias e remove a categoria de origem. Idempotente (no-op se a origem
+    não existe, ex.: instalação nova ou migração já rodada)."""
+    from sqlalchemy import text
+    with engine.begin() as conn:
+        try:
+            de = conn.execute(text("SELECT id FROM categorias WHERE nome = :n"), {"n": de_nome}).fetchone()
+            para = conn.execute(text("SELECT id FROM categorias WHERE nome = :n"), {"n": para_nome}).fetchone()
+        except Exception:
+            return  # tabela categorias ainda não existe
+        if not de:
+            return
+        de_id = de[0]
+        para_id = para[0] if para else None
+        if para_id is None:
+            # destino não existe: só renomeia a origem (preserva os dados)
+            conn.execute(text("UPDATE categorias SET nome = :p WHERE id = :id"),
+                         {"p": para_nome, "id": de_id})
+            return
+        for sql in (
+            "UPDATE transacoes SET categoria_id = :para WHERE categoria_id = :de",
+            "UPDATE regras SET categoria_id = :para WHERE categoria_id = :de",
+            "UPDATE memoria SET categoria_id = :para WHERE categoria_id = :de",
+        ):
+            try:
+                conn.execute(text(sql), {"para": para_id, "de": de_id})
+            except Exception:
+                pass  # tabela pode não existir no primeiro boot
+        conn.execute(text("DELETE FROM categorias WHERE id = :id"), {"id": de_id})
 
 
 def _corrigir_saldos_ofx_inconfiaveis(engine):
