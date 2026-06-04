@@ -199,7 +199,12 @@ def importar_pdf(
         senha_para_oferecer = senha_usada
 
     # 3. Cria fatura
-    valor_total = sum(t["valor"] for t in bill["transacoes"])
+    # Preferimos o total OFICIAL extraído da fatura (valor a pagar) quando o
+    # parser o fornece — a soma das linhas não fecha 100% por causa de
+    # arredondamento do banco e cobranças sem data (IOF/encargos). Fallback: soma.
+    soma_linhas = sum(t["valor"] for t in bill["transacoes"])
+    total_oficial = bill.get("total")
+    valor_total = total_oficial if total_oficial else soma_linhas
     fatura = Fatura(
         banco=banco,
         conta_id=conta.id,

@@ -45,6 +45,25 @@ _RE_TRANS_SIMPLE = re.compile(
 _RE_VENC = re.compile(r'Vencimento[\s\S]{0,200}?(\d{2}/\d{2}/\d{4})', re.IGNORECASE)
 _RE_PERIODO = re.compile(r'(\d{2})/(\d{2})/(\d{2})\s*a\s*(\d{2})/(\d{2})/(\d{2})')
 _RE_CARTAO = re.compile(r'(\d{4})\s+XXXX\s+XXXX\s+(\d{4})')
+# Total OFICIAL da fatura (o valor a pagar). Preferimos isto à soma das linhas:
+# o banco arredonda e cobra IOF/encargos sem data, então as linhas nunca fecham
+# 100% com o total. "Saldo Desta Fatura" é o resumo; "Pagamento Total" é o boleto.
+_RE_TOTAL_OFICIAL = (
+    re.compile(r'Saldo\s+Desta\s+Fatura\s+R?\$?\s*([\d.]+,\d{2})', re.IGNORECASE),
+    re.compile(r'Pagamento\s+Total\s+R?\$?\s*([\d.]+,\d{2})', re.IGNORECASE),
+)
+
+
+def _extrair_total_oficial(text: str):
+    """Lê o total a pagar da fatura (não a soma das linhas). None se não achar."""
+    for rgx in _RE_TOTAL_OFICIAL:
+        m = rgx.search(text)
+        if m:
+            try:
+                return _parse_brl(m.group(1))
+            except ValueError:
+                continue
+    return None
 
 
 # Linhas a ignorar mesmo se "parecerem" transação
@@ -247,6 +266,7 @@ def parse_fatura_santander(pdf_path: str, senha: str = None) -> dict:
         "periodo_inicio": per_inicio,
         "periodo_fim": per_fim,
         "transacoes": transacoes,
+        "total": _extrair_total_oficial(text),   # total a pagar (oficial), pode ser None
     }
 
 
