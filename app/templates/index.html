@@ -172,10 +172,6 @@
       </div>
     </div>
 
-    <div class="flex items-center justify-end -mt-6 mb-6">
-      <span class="text-xs text-zinc-600" x-text="rotuloPeriodo()"></span>
-    </div>
-
     <!-- Barra de blocos ocultos (mostrar de volta) -->
     <div x-show="nBlocosOcultos() > 0" class="mb-6 flex items-center flex-wrap gap-x-2 gap-y-1 text-xs text-zinc-500">
       <span class="text-zinc-600 tracking-wider mr-1" x-text="nBlocosOcultos() + ' bloco(s) oculto(s):'"></span>
@@ -228,47 +224,6 @@
         </div>
       </div>
       </div>
-    </div>
-
-    <!-- Saldo geral = saldo em caixa real: variação do dinheiro nas contas (bate com o extrato) -->
-    <div x-show="dashboard.saldo_geral !== undefined" class="border border-zinc-800 rounded-lg p-5 mb-8 bg-zinc-900/30">
-      <div class="flex items-baseline justify-between mb-4">
-        <h3 class="text-sm tracking-widest text-zinc-400">Saldo geral · caixa do período</h3>
-        <span class="text-xs text-zinc-600">Variação real do dinheiro nas contas — bate com saldo inicial → final do extrato (transferências entre suas contas se anulam)</span>
-      </div>
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div>
-          <div class="text-xs text-zinc-500 mb-1">Receitas − Despesas</div>
-          <div class="font-mono text-lg" :class="dashboard.saldo >= 0 ? 'text-zinc-200' : 'text-red-400'"
-               x-text="(dashboard.saldo >= 0 ? '+' : '') + brl(dashboard.saldo)"></div>
-        </div>
-        <div>
-          <div class="text-xs text-zinc-500 mb-1">Empréstimos (recebeu − emprestou)</div>
-          <div class="font-mono text-lg"
-               :class="(dashboard.fluxo_emprestimos?.liquido ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'"
-               x-text="((dashboard.fluxo_emprestimos?.liquido ?? 0) >= 0 ? '+' : '') + brl(dashboard.fluxo_emprestimos?.liquido ?? 0)"></div>
-          <div class="text-[10px] text-zinc-600"
-               x-text="'recebeu ' + brl(dashboard.fluxo_emprestimos?.recebido ?? 0) + ' · emprestou ' + brl(dashboard.fluxo_emprestimos?.concedido ?? 0)"></div>
-        </div>
-        <div>
-          <div class="text-xs text-zinc-500 mb-1">Investimentos (resgatou − aplicou)</div>
-          <div class="font-mono text-lg"
-               :class="(dashboard.fluxo_investimentos?.liquido ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'"
-               x-text="((dashboard.fluxo_investimentos?.liquido ?? 0) >= 0 ? '+' : '') + brl(dashboard.fluxo_investimentos?.liquido ?? 0)"></div>
-          <div class="text-[10px] text-zinc-600"
-               x-text="'resgatou ' + brl(dashboard.fluxo_investimentos?.resgatado ?? 0) + ' · aplicou ' + brl(dashboard.fluxo_investimentos?.aplicado ?? 0)"></div>
-        </div>
-        <div class="border-l-2 border-amber-600 pl-4">
-          <div class="text-xs tracking-widest text-zinc-500 mb-1">Saldo geral</div>
-          <div class="font-serif text-2xl font-medium"
-               :class="(dashboard.saldo_geral ?? 0) >= 0 ? 'text-amber-400' : 'text-red-400'"
-               x-text="brl(dashboard.saldo_geral ?? 0)"></div>
-        </div>
-      </div>
-      <p class="text-[11px] text-zinc-600 mt-3">
-        Quanto seu dinheiro em conta variou no período, somando renda, gastos, empréstimos e investimentos
-        (aplicar conta como saída; resgatar como entrada). Rendimentos e cashback já entram nas receitas.
-      </p>
     </div>
 
     <!-- Linha secundária: breakdown (Essenciais + Discricionárias + Investido) -->
@@ -324,6 +279,44 @@
       </div>
     </div>
 
+    <!-- Saldo geral = saldo em caixa real (variação do dinheiro nas contas) -->
+    <div x-show="dashboard.saldo_geral !== undefined && !blocoOculto('saldo_geral')"
+         class="border border-zinc-800 rounded-lg p-5 mb-8 bg-zinc-900/30 relative group">
+      <button @click="ocultarBloco('saldo_geral')"
+              class="absolute right-3 top-3 text-[10px] tracking-wider text-zinc-700 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition">
+        ocultar
+      </button>
+      <div class="flex items-baseline justify-between mb-4">
+        <h3 class="text-sm tracking-widest text-zinc-400">Saldo geral · caixa do período</h3>
+        <span class="text-xs text-zinc-600">Variação real do dinheiro nas contas</span>
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div>
+          <div class="text-xs text-zinc-500 mb-1">Receitas − Despesas</div>
+          <div class="font-mono text-lg" :class="dashboard.saldo >= 0 ? 'text-zinc-200' : 'text-red-400'"
+               x-text="(dashboard.saldo >= 0 ? '+' : '') + brl(dashboard.saldo)"></div>
+        </div>
+        <div>
+          <div class="text-xs text-zinc-500 mb-1">Empréstimos (recebeu − emprestou)</div>
+          <div class="font-mono text-lg"
+               :class="(dashboard.fluxo_emprestimos?.liquido ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'"
+               x-text="((dashboard.fluxo_emprestimos?.liquido ?? 0) >= 0 ? '+' : '') + brl(dashboard.fluxo_emprestimos?.liquido ?? 0)"></div>
+        </div>
+        <div>
+          <div class="text-xs text-zinc-500 mb-1">Investimentos (resgatou − aplicou)</div>
+          <div class="font-mono text-lg"
+               :class="(dashboard.fluxo_investimentos?.liquido ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'"
+               x-text="((dashboard.fluxo_investimentos?.liquido ?? 0) >= 0 ? '+' : '') + brl(dashboard.fluxo_investimentos?.liquido ?? 0)"></div>
+        </div>
+        <div class="border-l-2 border-amber-600 pl-4">
+          <div class="text-xs tracking-widest text-zinc-500 mb-1">Saldo geral</div>
+          <div class="font-serif text-2xl font-medium"
+               :class="(dashboard.saldo_geral ?? 0) >= 0 ? 'text-amber-400' : 'text-red-400'"
+               x-text="brl(dashboard.saldo_geral ?? 0)"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- Resumo de empréstimos (saldo acumulado a receber) -->
     <div x-show="dashboard.emprestimos && (dashboard.emprestimos.emprestado > 0 || dashboard.emprestimos.recebido > 0) && !blocoOculto('emprestimos')"
          class="bg-zinc-900/40 border border-zinc-800 rounded-lg p-5 mb-8 relative group">
@@ -333,7 +326,7 @@
       </button>
       <div class="flex items-baseline justify-between mb-4">
         <h3 class="text-sm tracking-widest text-zinc-400">Empréstimos a terceiros · acumulado</h3>
-        <span class="text-xs text-zinc-600">Saldo total a receber (todo o histórico) · Despesa = emprestou · Receita = recebeu</span>
+        <span class="text-xs text-zinc-600">Saldo a receber · todo o histórico</span>
       </div>
       <div class="grid grid-cols-3 gap-6 mb-4">
         <div>

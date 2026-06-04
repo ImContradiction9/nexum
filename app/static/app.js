@@ -84,6 +84,7 @@ function financeiro() {
     blocosDashboard: [
       { id: 'kpis_principais',   nome: 'Receitas / Despesas / Saldo' },
       { id: 'kpis_secundarios',  nome: 'Essenciais / Discricionárias / Investido' },
+      { id: 'saldo_geral',       nome: 'Saldo geral (caixa)' },
       { id: 'emprestimos',       nome: 'Empréstimos a terceiros' },
       { id: 'alertas',           nome: 'Avisos de não categorizadas' },
       { id: 'graficos',          nome: 'Gráficos (categoria e evolução)' },
