@@ -75,11 +75,7 @@ Se você publicar novas versões no **GitHub Releases**, o Nexum avisa sozinho:
 ## Importar faturas (PDF)
 
 Funciona para Nubank, Bradesco, Santander e Mercado Pago. A leitura de PDF já
-vem embutida — **não precisa mais do Poppler**.
-
-> Exceção rara: algumas faturas do Mercado Pago usam uma fonte "quebrada" que
-> exige OCR. Só nesse caso é preciso instalar o Tesseract
-> (https://github.com/UB-Mannheim/tesseract/wiki). As outras funcionam direto.
+vem embutida — **não precisa instalar nada** (sem Poppler).
 
 ## Problemas?
 

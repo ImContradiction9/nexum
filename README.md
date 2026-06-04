@@ -1,47 +1,80 @@
-# Financeiro Pessoal — v1.0 (Fase 1)
+# Nexum
 
-App local de gestão financeira. Roda no seu PC, dados ficam no seu HD.
+App local de gestão financeira para Windows. Roda 100% no seu PC — seus dados
+ficam no seu computador (`%APPDATA%\Nexum\financeiro.db`), nada vai para a
+internet. Interface em janela nativa (Edge WebView2), import de faturas em PDF,
+dashboard, metas, investimentos e auto-update via GitHub Releases.
 
-## 🚀 Começar
+## Para usar (usuário final)
 
-1. Leia **GUIA_INSTALACAO.md** (instala Python + Poppler — uma vez só)
-2. Duplo-clique em **iniciar.bat** (Windows) ou **iniciar.command** (Mac)
-3. Navegador abre em http://localhost:8765
+Baixe o **`NexumSetup.exe`** da última [release](../../releases), dê duplo-clique
+e siga o assistente (sem admin). O passo a passo completo — onde ficam os dados,
+backup, atualizações, importar faturas — está em **[COMO_USAR.md](COMO_USAR.md)**.
 
-## ✅ O que tem nesta v1
+## Funcionalidades
 
-- ✓ Importação de faturas Nubank, Bradesco e Santander (PDF)
-- ✓ Detecção automática de PDFs já importados (não duplica)
-- ✓ Auto-categorização: regras (~150 prontas) + memória de aprendizado
-- ✓ Edição inline de categoria e atribuição
-- ✓ Quando você corrige uma transação, o app **aprende** e aplica em outras
-- ✓ Dashboard: receitas/despesas/saldo, breakdown por categoria, atribuição, conta, forma de pgto
-- ✓ Filtros (mês, conta, categoria, atribuição, busca, "sem categoria")
-- ✓ Conciliação básica: detecta pagamentos de fatura e duplicatas
-- ✓ Gerenciamento de regras (criar/excluir)
-- ✓ Gerenciamento de faturas importadas (excluir)
+- Importação de faturas **Nubank, Bradesco, Santander e Mercado Pago** (PDF) e
+  extratos **OFX** — leitura embutida (pypdfium2), sem precisar de Poppler.
+- Detecção de PDFs já importados (não duplica) e de duplicatas entre fontes.
+- Auto-categorização: regras + memória que aprende com suas correções.
+- Dashboard: receitas/despesas, **saldo em caixa**, breakdown por categoria,
+  atribuição, conta e forma de pagamento; regime por **emissão** ou **pagamento**.
+- Metas e investimentos (renda fixa rende via série CDI do BCB; IR/IOF no líquido).
+- Conciliação de pagamento de fatura ↔ cartão; divisão de transações.
+- Exportação para Excel (.xlsx).
+- Acesso pelo celular na rede local (com PIN).
+- Auto-update: avisa quando há versão nova e atualiza com um clique.
 
-## ⏳ O que NÃO tem ainda (vem nas próximas fases)
+## Desenvolvimento
 
-**Fase 2** — me chame de volta com exemplos pra implementar:
-- Importação de extratos bancários (cada banco tem layout diferente)
-- Conciliação avançada (Pix x cartão, transferências entre contas)
-- Categorização ML (modelo treinado nas suas correções)
-- Gráficos no dashboard
-- Backup automático
-- Atribuição visual com drag-and-drop
+Requer Python 3.10+ (o build oficial usa o 3.14 do python.org).
 
-**Fase 3** — refinamentos:
-- Modo "app window" (sem barra de URL do navegador)
-- Atalhos de teclado
-- Relatórios PDF
-- Export Excel
-- Mobile responsivo (acessar pelo celular na rede de casa)
+```bash
+pip install -r requirements.txt      # runtime
+pip install -r requirements-dev.txt  # testes
+python run_nexum.py                  # roda local (janela nativa / navegador)
+python -m pytest -q                  # testes
+```
 
-## 💾 Backup
+Os dados em dev ficam em `data/` na raiz do projeto.
 
-**Seus dados estão num arquivo só**: `data/financeiro.db`. Faça backup periódico copiando esse arquivo. Recomendação: ponha a pasta inteira no Dropbox/Google Drive.
+### Versão DEV isolada
 
-## 🆘 Suporte
+Para testar sem misturar com o app real, rode em **modo dev** (banco em
+`%APPDATA%\Nexum-Dev`, porta 8766, badge "DEV"):
 
-Volte a me consultar quando precisar — explico mais em GUIA_INSTALACAO.md (seção "Quando voltar a falar comigo").
+```bash
+set NEXUM_DEV=1 && python run_nexum.py        # ou crie um arquivo dev.txt ao lado do exe
+```
+
+O build dedicado `Nexum-Dev.spec` gera um `dist\Nexum-Dev.exe` já em modo dev.
+
+## Build & publicação
+
+A versão é única em `app/__init__.py`.
+
+```powershell
+.\build_exe.ps1          # dist\Nexum.exe (PyInstaller onefile, Nexum.spec)
+.\build_installer.ps1    # dist\NexumSetup.exe (Inno Setup; winget install JRSoftware.InnoSetup)
+.\publicar.ps1 1.0.58    # bump + build + commit + push + gh release create (auto-update)
+```
+
+Publicar exige `gh` autenticado (`winget install GitHub.cli` → `gh auth login`).
+O repositório de releases precisa ser **público** (a verificação de update não usa
+token). Nos clientes, configure o repo em **Configurações → Atualizações**
+(`usuario/repo`) — eles recebem o aviso e atualizam com um clique. Override por
+máquina: variável `NEXUM_UPDATE_REPO`.
+
+## Estrutura
+
+```
+app/
+  main.py            API FastAPI + serve a SPA + gate de rede
+  deps.py            bootstrap (caminho do banco, engine, sessão, get_db)
+  database.py        modelos SQLAlchemy + migrações
+  routers/           endpoints por domínio (dashboard, transacoes, faturas, ...)
+  parsers/           leitura de faturas/extratos (pdf_text via pypdfium2)
+  templates/, static/  UI (Alpine.js + Tailwind + Chart.js)
+run_nexum.py         launcher do exe (porta, janela nativa, modo dev/portátil)
+tests/               pytest
+```
