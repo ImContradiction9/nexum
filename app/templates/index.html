@@ -66,8 +66,9 @@
   <header class="border-b border-zinc-800/80">
     <div class="max-w-[1600px] mx-auto px-8 py-6 flex items-center justify-between gap-3 flex-wrap">
       <div class="flex items-center gap-4 sm:gap-6 min-w-0">
-        <h1 class="flex items-center shrink-0" title="Nexum">
+        <h1 class="flex items-center shrink-0 gap-2" title="Nexum{% if dev %} (DEV){% endif %}">
           <img src="/static/nexum-n.png?v={{ v }}" alt="Nexum" style="height: 38px; width: auto; display: block;">
+          {% if dev %}<span class="px-2 py-0.5 rounded text-[11px] font-bold tracking-wide bg-amber-500/20 text-amber-400 border border-amber-500/40" title="Versão de testes — banco de dados separado do Nexum real">DEV</span>{% endif %}
         </h1>
         <nav class="flex gap-1 text-sm">
           <button @click="view='dashboard'"

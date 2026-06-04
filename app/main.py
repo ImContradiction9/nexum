@@ -2,6 +2,7 @@
 Aplicação FastAPI principal.
 Serve a UI HTML e expõe endpoints REST para todas as operações.
 """
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -96,7 +97,8 @@ async def _controle_rede(request: Request, call_next):
 def home(request: Request):
     # no-store: a janela nativa (WebView2) não pode servir uma versão em cache da
     # SPA — senão pode mostrar dados/tela "velhos" após atualizar ou reimportar.
-    resp = templates.TemplateResponse(request, "index.html", {"v": BOOT_TIMESTAMP})
+    dev = os.environ.get("NEXUM_DEV", "").strip().lower() not in ("", "0", "false", "off")
+    resp = templates.TemplateResponse(request, "index.html", {"v": BOOT_TIMESTAMP, "dev": dev})
     resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     return resp
 

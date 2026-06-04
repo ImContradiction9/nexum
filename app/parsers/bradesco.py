@@ -18,6 +18,63 @@ def _parse_brl(s: str) -> float:
     return float(s.replace(".", "").replace(",", "."))
 
 
+def _dia_mes(data_str: str) -> tuple:
+    """Extrai (dia, mes) de 'DD/MM' tolerando espaços ao redor da barra."""
+    ds = re.sub(r"\s+", "", data_str)
+    return int(ds[:2]), int(ds[3:5])
+
+
+def _mk_date(d, m, a):
+    try:
+        return date(int(a), int(m), int(d))
+    except (ValueError, TypeError):
+        return None
+
+
+# === Vencimento no cabeçalho (ciente de coluna) ============================
+def _vencimento_header_bradesco(pdf_path: str, senha: str = None):
+    """
+    Lê o vencimento do cabeçalho do Bradesco respeitando a coluna "Vencimento".
+
+    Em alguns layouts (VISA Infinite) a data fica "quebrada": o mês/ano aparece
+    como '/ MM / AAAA' numa linha e o DIA isolado noutra (na linha do total),
+    ambos alinhados sob o rótulo "Vencimento". Aqui localizamos a coluna do
+    rótulo e remontamos a data a partir desse recorte vertical — evitando pegar
+    por engano a data de "Previsão de fechamento da próxima fatura".
+    """
+    try:
+        texto = executar_pdftotext(pdf_path, senha=senha, layout=True, ultima_pagina=1)
+    except Exception:
+        return None
+
+    linhas = texto.splitlines()
+    for i, linha in enumerate(linhas):
+        vc = linha.find("Vencimento")
+        if vc < 0:
+            continue
+        lo = max(0, vc - 8)
+        # Janela curta (i..i+5) para não alcançar a linha da "próxima fatura".
+        blob = " ".join(s[lo:] for s in linhas[i:i + 6])
+
+        # 1) data completa contígua (com ou sem espaços)
+        m = re.search(r'(\d{2})\s*/\s*(\d{2})\s*/\s*(\d{4})', blob)
+        if m:
+            dt = _mk_date(*m.groups())
+            if dt:
+                return dt
+
+        # 2) mês/ano sem o dia ('/ MM / AAAA') + dia isolado em outra linha
+        mma = re.search(r'/\s*(\d{2})\s*/\s*(\d{4})', blob)
+        if mma:
+            resto = blob[:mma.start()] + "  " + blob[mma.end():]
+            dm = re.search(r'(?<![\d,.])(\d{2})(?![\d,.])', resto)
+            if dm:
+                dt = _mk_date(dm.group(1), mma.group(1), mma.group(2))
+                if dt:
+                    return dt
+    return None
+
+
 # === Vencimento (fallback via código de barras) ============================
 def _vencimento_codigo_barras(text):
     """
@@ -36,7 +93,7 @@ def _vencimento_codigo_barras(text):
 # === Formato "Amazon Mastercard" ===========================================
 # Primeiro valor monetário após a data (página pode ter 2 colunas).
 _RE_TRANS_AMAZON = re.compile(
-    r'^\s*(\d{2}/\d{2})\s+(.+?)\s+([\d.]+,\d{2})(\s*-)?(?=\s{2,}|\s*$)'
+    r'^\s*(\d{2}\s*/\s*\d{2})\s+(.+?)\s+([\d.]+,\d{2})(\s*-)?(?=\s{2,}|\s*$)'
 )
 # Parcela entre parênteses no fim da descrição, ex. "(04/04)".
 _RE_PARCELA_PAREN = re.compile(r'\s*\((\d{2}/\d{2})\)\s*$')
@@ -66,7 +123,7 @@ def _parse_amazon(text, venc, infer_year):
             continue
         if valor <= 0:
             continue
-        dia, mes = int(data_str[:2]), int(data_str[3:5])
+        dia, mes = _dia_mes(data_str)
         try:
             t_date = date(infer_year(mes), mes, dia)
         except ValueError:
@@ -96,7 +153,7 @@ def _parse_amazon(text, venc, infer_year):
 # Linha: DD/MM <histórico ...>  <valor>  [ruído da coluna ao lado]
 # A descrição/parcela/cidade ficam todas no "miolo" entre data e valor.
 _RE_TRANS_VISA = re.compile(
-    r'^\s*(\d{2}/\d{2})\s+(.+?)\s{2,}([\d.]+,\d{2})(\s*-)?(?:\s{2,}.*)?$'
+    r'^\s*(\d{2}\s*/\s*\d{2})\s+(.+?)\s{2,}([\d.]+,\d{2})(\s*-)?(?:\s{2,}.*)?$'
 )
 # Parcela: exatamente NN/NN. Pode vir colada ao fim de um token da descrição.
 _RE_PARCELA_INLINE = re.compile(r'\d{2}/\d{2}')
@@ -162,7 +219,7 @@ def _parse_visa(text, venc, infer_year):
         if valor <= 0:
             continue
 
-        dia, mes = int(data_str[:2]), int(data_str[3:5])
+        dia, mes = _dia_mes(data_str)
         try:
             t_date = date(infer_year(mes), mes, dia)
         except ValueError:
@@ -194,8 +251,11 @@ def parse_fatura_bradesco(pdf_path: str, senha: str = None) -> dict:
             "Possiveis causas: PDF e imagem escaneada ou PDF protegido."
         )
 
-    # --- Vencimento: helper robusto + fallback no código de barras ---
-    venc = encontrar_vencimento(pdf_path, senha=senha)
+    # --- Vencimento: cabeçalho ciente de coluna (lida com data "quebrada"),
+    #     depois helper genérico, por fim o código de barras ---
+    venc = _vencimento_header_bradesco(pdf_path, senha=senha)
+    if not venc:
+        venc = encontrar_vencimento(pdf_path, senha=senha)
     if not venc:
         venc = _vencimento_codigo_barras(text)
     if not venc:

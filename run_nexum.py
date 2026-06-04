@@ -33,7 +33,27 @@ def _pasta_base() -> Path:
     return Path(__file__).resolve().parent
 
 
-def _pasta_dados(base: Path) -> Path:
+def _modo_dev(base: Path) -> bool:
+    """Modo DEV: roda isolado do Nexum "de verdade" (banco e porta próprios).
+
+    Ativado por (qualquer um):
+      - env NEXUM_DEV setado (≠ '', '0', 'false');
+      - marcador `DEV_BUILD` embutido no bundle (build dedicado Nexum-Dev);
+      - arquivo `dev.txt` ao lado do exe.
+    Serve pra testar faturas/mudanças sem misturar com o banco real.
+    """
+    val = os.environ.get("NEXUM_DEV", "").strip().lower()
+    if val and val not in ("0", "false", "nao", "não", "off"):
+        return True
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass and (Path(meipass) / "DEV_BUILD").exists():
+        return True
+    if (base / "dev.txt").exists():
+        return True
+    return False
+
+
+def _pasta_dados(base: Path, dev: bool = False) -> Path:
     """Decide onde os dados (banco + backups) devem viver.
 
     Prioridade:
@@ -43,18 +63,24 @@ def _pasta_dados(base: Path) -> Path:
       3. Instalado (frozen): `%APPDATA%\\Nexum` — o exe pode estar em
          Program Files (só-leitura), então os dados NÃO podem ficar ao lado dele.
       4. Dev (não-frozen): `<raiz do projeto>/data`, como sempre.
+
+    No modo DEV, o nome muda (`Nexum-Dev` / `data-dev`) para nunca tocar no
+    banco do Nexum real.
     """
     override = os.environ.get("NEXUM_DATA_DIR")
     if override:
         return Path(override).expanduser()
 
+    nome_appdata = "Nexum-Dev" if dev else "Nexum"
+    nome_local = "data-dev" if dev else "data"
+
     if getattr(sys, "frozen", False):
         if (base / "portable.txt").exists():
-            return base / "data"
+            return base / nome_local
         appdata = os.environ.get("APPDATA") or str(Path.home() / "AppData" / "Roaming")
-        return Path(appdata) / "Nexum"
+        return Path(appdata) / nome_appdata
 
-    return base / "data"
+    return base / nome_local
 
 
 def _migrar_dados_antigos(data_dir: Path, base: Path) -> None:
@@ -83,9 +109,16 @@ def _migrar_dados_antigos(data_dir: Path, base: Path) -> None:
 
 
 BASE = _pasta_base()
-DATA_DIR = _pasta_dados(BASE)
+DEV = _modo_dev(BASE)
+# Exporta o flag pra que o app (main.py/UI) saiba que está em modo DEV mesmo
+# quando ativado por marcador embutido (e não por env).
+if DEV:
+    os.environ["NEXUM_DEV"] = "1"
+DATA_DIR = _pasta_dados(BASE, DEV)
 DATA_DIR.mkdir(parents=True, exist_ok=True)
-_migrar_dados_antigos(DATA_DIR, BASE)
+# No modo DEV o banco é separado; não migra dados antigos pra não puxar o real.
+if not DEV:
+    _migrar_dados_antigos(DATA_DIR, BASE)
 # deps.py lê FINANCEIRO_DB; definimos antes de qualquer import do app.
 os.environ.setdefault("FINANCEIRO_DB", str(DATA_DIR / "financeiro.db"))
 
@@ -103,10 +136,13 @@ if sys.stdout is None or sys.stderr is None:
     if sys.stderr is None:
         sys.stderr = _logf
 
+# Porta padrão: 8765 (prod) ou 8766 (dev) — assim o Nexum DEV roda lado a lado
+# com o Nexum real sem colidir na porta nem ser confundido com ele.
+_PORTA_DEFAULT = 8766 if DEV else 8765
 try:
-    PORTA_PADRAO = int(os.environ.get("NEXUM_PORT") or 8765)
+    PORTA_PADRAO = int(os.environ.get("NEXUM_PORT") or _PORTA_DEFAULT)
 except ValueError:
-    PORTA_PADRAO = 8765
+    PORTA_PADRAO = _PORTA_DEFAULT
 HOST = "127.0.0.1"          # usado para abrir o navegador e checar saúde (local)
 # Escutamos em todas as interfaces para permitir acesso pelo celular na rede
 # local. O acesso de fora do PC é barrado por padrão pelo middleware de rede
@@ -364,8 +400,9 @@ def _abrir_janela_nativa(porta: int, dono: bool = True) -> bool:
     except Exception:
         return False
     url = f"http://{HOST}:{porta}"
+    titulo = "Nexum (DEV)" if DEV else "Nexum"
     try:
-        webview.create_window("Nexum", url, width=1400, height=900, min_size=(900, 600))
+        webview.create_window(titulo, url, width=1400, height=900, min_size=(900, 600))
         webview.start()   # bloqueia até a janela ser fechada
     except Exception:
         return False
