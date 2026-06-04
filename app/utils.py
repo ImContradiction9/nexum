@@ -32,17 +32,27 @@ def normalizar_descricao(desc: str) -> str:
     return s
 
 
-def hash_dedup(banco: str, data_compra: date, valor: float, descricao: str, parcela: str = None) -> str:
+def hash_dedup(banco: str, data_compra: date, valor: float, descricao: str,
+               parcela: str = None, cartao: str = None) -> str:
     """
     Hash determinístico para detectar duplicatas dentro do mesmo banco/data/valor.
     Não usa descrição literal — usa primeiros 30 chars normalizados.
 
     `parcela` (ex: "2/12") é incluído para distinguir parcelas distintas da mesma
     compra (sem ele, todas as 12 parcelas geram o mesmo hash e só a 1ª entra).
+
+    `cartao` (final do cartão) distingue a MESMA compra feita em cartões
+    diferentes da mesma fatura (titular + adicionais). Sem ele, ex.: dois
+    "SEGURO 9,99" (um por cartão) colidiam e o 2º caía como falsa duplicata,
+    sumindo dos totais. O segmento só entra quando há cartão, então hashes
+    antigos (OFX / sem cartão) ficam idênticos — preserva o dedup contra dados
+    já gravados.
     """
     desc_norm = normalizar_descricao(descricao)[:30]
     parcela_str = parcela or ""
     raw = f"{banco}|{data_compra.isoformat()}|{valor:.2f}|{desc_norm}|{parcela_str}"
+    if cartao:
+        raw += f"|{cartao}"
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 

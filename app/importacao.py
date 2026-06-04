@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from .database import Conta, Categoria, Fatura, Transacao
@@ -228,13 +229,21 @@ def importar_pdf(
     regras_ativas = carregar_regras_ativas(session)   # uma vez, fora do loop
 
     for t in bill["transacoes"]:
-        h_dedup = hash_dedup(banco, t["data_compra"], t["valor"], t["descricao"], t.get("parcela"))
-        # Hash legado (versão antiga sem parcela) — ainda existem no banco. Compatibilidade.
+        h_dedup = hash_dedup(banco, t["data_compra"], t["valor"], t["descricao"],
+                             t.get("parcela"), cartao=t.get("cartao_final4"))
+        # Hashes legados (versões antigas: sem cartão e/ou sem parcela) — ainda
+        # existem no banco. Mantidos no match para não duplicar dados já gravados.
         h_dedup_legado = hash_dedup(banco, t["data_compra"], t["valor"], t["descricao"])
+        h_dedup_legado_parc = hash_dedup(banco, t["data_compra"], t["valor"], t["descricao"], t.get("parcela"))
 
+        # Dedup só contra OUTRAS fontes/faturas — nunca contra a própria fatura
+        # sendo importada. Num mesmo PDF cada linha já é um lançamento real (o
+        # banco não repete por engano), então duas cobranças idênticas no mesmo
+        # dia/cartão (ex.: dois pedágios) são ambas válidas e devem entrar.
         existente = session.query(Transacao).filter(
-            Transacao.hash_dedup.in_([h_dedup, h_dedup_legado]),
+            Transacao.hash_dedup.in_([h_dedup, h_dedup_legado, h_dedup_legado_parc]),
             Transacao.conta_id == conta.id,
+            or_(Transacao.fatura_id != fatura.id, Transacao.fatura_id.is_(None)),
         ).first()
 
         # Decide se é suspeita de duplicata
