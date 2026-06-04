@@ -3,7 +3,7 @@ Regressão: o total da fatura Santander deve ser o TOTAL OFICIAL (valor a pagar)
 não a soma das linhas — que não fecha 100% por causa de arredondamento do banco
 e cobranças sem data (ex.: "IOF DESPESA NO EXTERIOR").
 """
-from app.parsers.santander import _extrair_total_oficial
+from app.parsers.santander import _extrair_total_oficial, _RE_IOF_EXTERIOR
 
 
 def test_extrai_saldo_desta_fatura():
@@ -23,3 +23,10 @@ def test_extrai_pagamento_total_com_rs():
 
 def test_sem_total_retorna_none():
     assert _extrair_total_oficial("fatura sem linha de total aqui") is None
+
+
+def test_regex_iof_exterior():
+    m = _RE_IOF_EXTERIOR.search("       IOF DESPESA NO EXTERIOR        1,15")
+    assert m and m.group(1) == "1,15"
+    # não casa juros/encargos genéricos com "IOF" no meio do texto
+    assert _RE_IOF_EXTERIOR.search("IOF: 0,246% a.m. + IOF adicional") is None

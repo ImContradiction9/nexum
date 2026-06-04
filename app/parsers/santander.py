@@ -45,6 +45,10 @@ _RE_TRANS_SIMPLE = re.compile(
 _RE_VENC = re.compile(r'Vencimento[\s\S]{0,200}?(\d{2}/\d{2}/\d{4})', re.IGNORECASE)
 _RE_PERIODO = re.compile(r'(\d{2})/(\d{2})/(\d{2})\s*a\s*(\d{2})/(\d{2})/(\d{2})')
 _RE_CARTAO = re.compile(r'(\d{4})\s+XXXX\s+XXXX\s+(\d{4})')
+# IOF de compra internacional: vem numa linha à parte, logo após a compra
+# (com a "COTAÇÃO DOLAR" no meio). Não tem data → não é um lançamento próprio;
+# é somado à compra anterior, pra refletir o custo real dela.
+_RE_IOF_EXTERIOR = re.compile(r'IOF\s+DESPESA\s+NO\s+EXTERIOR\s+([\d.]+,\d{2})', re.IGNORECASE)
 # Total OFICIAL da fatura (o valor a pagar). Preferimos isto à soma das linhas:
 # o banco arredonda e cobra IOF/encargos sem data, então as linhas nunca fecham
 # 100% com o total. "Saldo Desta Fatura" é o resumo; "Pagamento Total" é o boleto.
@@ -205,6 +209,19 @@ def parse_fatura_santander(pdf_path: str, senha: str = None) -> dict:
 
         # Linha de cabeçalho de tabela
         if "Compra" in line and "Data" in line and "Descrição" in line:
+            continue
+
+        # IOF de despesa no exterior: soma na ÚLTIMA compra (a internacional que
+        # acabou de ser lançada), aumentando o valor dela. Não vira lançamento.
+        m_iof = _RE_IOF_EXTERIOR.search(line)
+        if m_iof:
+            if transacoes:
+                try:
+                    iof_val = _parse_brl(m_iof.group(1))
+                    transacoes[-1]["valor"] = round(transacoes[-1]["valor"] + iof_val, 2)
+                    transacoes[-1]["iof"] = round(transacoes[-1].get("iof", 0.0) + iof_val, 2)
+                except ValueError:
+                    pass
             continue
 
         # Tenta com parcela primeiro, senão sem.
