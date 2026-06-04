@@ -113,3 +113,20 @@ def test_recalcular_data_pagamento_manual(db):
     recalcular_data_pagamento(db, f)
     db.refresh(t)
     assert t.data_pagamento == date(2026, 4, 30)
+
+
+def test_dashboard_periodo_perto_de_date_min_nao_quebra(db):
+    """Regressão: período começando em 0001-01-01 fazia o cálculo do período
+    anterior estourar (OverflowError) e o dashboard retornava 500. Agora deve
+    apenas omitir o comparativo, sem quebrar."""
+    cartao, corrente, cat = _base(db)
+    t = Transacao(conta_id=corrente.id, categoria_id=cat.id,
+                  data=date(2026, 5, 10), descricao="Compra", valor=50.0,
+                  tipo="Despesa", mes_referencia="05/2026", categoria_origem="manual")
+    db.add(t); db.commit()
+    # data_inicio = date.min → di - 1 dia estouraria sem a blindagem
+    r = dashboard(mes=None, data_inicio="0001-01-01", data_fim="2026-12-31",
+                  regime="pagamento", db=db)
+    assert "despesas" in r
+    assert r["tem_mes_anterior"] is False
+    assert r["mes_anterior"] is None

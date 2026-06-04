@@ -94,6 +94,10 @@ async def _controle_rede(request: Request, call_next):
 # ===========================================================
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
-    return templates.TemplateResponse(request, "index.html", {"v": BOOT_TIMESTAMP})
+    # no-store: a janela nativa (WebView2) não pode servir uma versão em cache da
+    # SPA — senão pode mostrar dados/tela "velhos" após atualizar ou reimportar.
+    resp = templates.TemplateResponse(request, "index.html", {"v": BOOT_TIMESTAMP})
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    return resp
 
 

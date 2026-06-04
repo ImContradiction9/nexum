@@ -1,2 +1,2 @@
 """Nexum — app local de gestão financeira."""
-__version__ = "1.0.52"
+__version__ = "1.0.55"

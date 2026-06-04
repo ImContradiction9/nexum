@@ -99,14 +99,21 @@ def dashboard(
             raise HTTPException(400, "data_inicio/data_fim inválidos (formato YYYY-MM-DD)")
         if df_obj < di_obj:
             raise HTTPException(400, "data_fim deve ser >= data_inicio")
-        # Calcula período anterior de mesma duração (pra comparativo)
+        # Calcula período anterior de mesma duração (pra comparativo).
+        # Blindado: se o início do período estiver perto de date.min (0001-01-01),
+        # subtrair um dia estoura (OverflowError) — nesse caso, simplesmente não há
+        # comparativo, mas o dashboard NUNCA deve quebrar por causa disso.
         from datetime import timedelta
         duracao = (df_obj - di_obj).days + 1
-        df_ant_obj = di_obj - timedelta(days=1)
-        di_ant_obj = df_ant_obj - timedelta(days=duracao - 1)
+        try:
+            df_ant_obj = di_obj - timedelta(days=1)
+            di_ant_obj = df_ant_obj - timedelta(days=duracao - 1)
+            mes_anterior_label = f"{di_ant_obj.isoformat()} a {df_ant_obj.isoformat()}"
+        except (OverflowError, ValueError):
+            df_ant_obj = di_ant_obj = None
+            mes_anterior_label = None
         # Pra exibição, deriva um "label" do período
         mes_label = f"{data_inicio} a {data_fim}"
-        mes_anterior_label = f"{di_ant_obj.isoformat()} a {df_ant_obj.isoformat()}"
     else:
         if not mes:
             ultima_trans = db.query(Transacao).order_by(Transacao.data.desc()).first()
@@ -191,6 +198,31 @@ def dashboard(
         v = q.scalar() or 0
         if v > 0:
             totais_especiais[label] = v
+
+    # === Fluxos especiais do período (pro "Saldo geral") — empréstimos e
+    # investimentos por tipo (entrou/saiu), respeitando período/regime/exclusões. ===
+    cat_por_nome = {c.nome: c for c in cats_especiais}
+
+    def _fluxo(cat_nome, tipo):
+        c = cat_por_nome.get(cat_nome)
+        if not c:
+            return 0.0
+        q = db.query(func.sum(Transacao.valor)).filter(
+            Transacao.categoria_id == c.id,
+            Transacao.tipo == tipo,
+            (Transacao.suspeita_duplicata == False) | Transacao.suspeita_duplicata.is_(None),
+            (Transacao.dividida == False) | Transacao.dividida.is_(None),
+        )
+        if modo_periodo:
+            q = q.filter(campo_data >= di_obj, campo_data <= df_obj)
+        else:
+            q = q.filter(Transacao.mes_referencia == mes)
+        return q.scalar() or 0.0
+
+    emp_recebido = _fluxo("Empréstimos a Terceiros", "Receita")
+    emp_concedido = _fluxo("Empréstimos a Terceiros", "Despesa")
+    inv_resgatado = _fluxo("Investimentos", "Receita")
+    inv_aplicado = _fluxo("Investimentos", "Despesa")
 
     # === Cálculo principal: receitas, despesas, essencial/discricionário ===
     # Em vez de SQL (que não consegue distinguir abatedoras), usamos Python.
@@ -354,7 +386,7 @@ def dashboard(
     meses = sorted(meses_raw, key=_mes_para_chave, reverse=True)
 
     # === Comparativo com período anterior ===
-    if modo_periodo:
+    if modo_periodo and di_ant_obj is not None and df_ant_obj is not None:
         # Período de mesma duração antes
         mes_anterior = mes_anterior_label
         base_ant_query = db.query(Transacao).filter(
@@ -546,12 +578,24 @@ def dashboard(
         ]
         emprestimos_resumo["por_pessoa"].sort(key=lambda x: x["saldo"], reverse=True)
 
+    # Saldo geral (caixa): tudo que entrou e saiu no período — receitas, despesas,
+    # empréstimos (recebido−concedido) e investimentos (resgatado−aplicado).
+    emp_liquido = emp_recebido - emp_concedido          # + recebeu mais do que emprestou
+    inv_liquido_caixa = inv_resgatado - inv_aplicado     # - aplicou mais do que resgatou
+    saldo_geral = (receitas - despesas) + emp_liquido + inv_liquido_caixa
+
     return {
         "mes": mes,
         "meses_disponiveis": meses,
         "receitas": receitas,
         "despesas": despesas,
         "saldo": receitas - despesas,
+        # Saldo geral (caixa) + componentes do período
+        "saldo_geral": round(saldo_geral, 2),
+        "fluxo_emprestimos": {"recebido": round(emp_recebido, 2), "concedido": round(emp_concedido, 2),
+                              "liquido": round(emp_liquido, 2)},
+        "fluxo_investimentos": {"resgatado": round(inv_resgatado, 2), "aplicado": round(inv_aplicado, 2),
+                                "liquido": round(inv_liquido_caixa, 2)},
         # Essencial vs Discricionário do mês atual
         "despesas_essenciais": desp_essencial,
         "despesas_discricionarias": desp_discricionario,

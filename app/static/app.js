@@ -334,9 +334,18 @@ function financeiro() {
       } finally { this.verificandoUpdate = false; }
     },
 
+    // Abre a página da release no GitHub (fallback pra baixar/instalar manual).
+    abrirGithubUpdate() {
+      if (this.appUpdate.url_release) window.open(this.appUpdate.url_release, '_blank');
+    },
+
     async instalarAtualizacao(opts = {}) {
+      // Sem app instalado (.exe) não dá pra auto-instalar → leva pro GitHub.
       if (!this.appUpdate.instalado) {
-        if (!opts.auto) this.notificar('Auto-instalação só no app instalado (.exe).', 'erro');
+        if (!opts.auto) {
+          this.notificar('Baixe a nova versão no GitHub e instale por cima (seus dados ficam).', 'ok');
+          this.abrirGithubUpdate();
+        }
         return;
       }
       // No modo automático (início do app) não pergunta nada — só avisa.
@@ -353,12 +362,15 @@ function financeiro() {
                          'backup do banco feito. O Nexum vai reabrir em instantes.', 'ok');
           // O servidor encerra logo após responder; a página vai cair — normal.
         } else {
+          // Auto-instalação falhou (download/permite) → oferece o GitHub.
           const d = await r.json().catch(() => ({}));
-          this.notificar(d.detail || 'Falha ao atualizar', 'erro');
           this.instalandoUpdate = false;
+          this.notificar((d.detail || 'Não consegui atualizar automaticamente') +
+                         ' — abrindo o GitHub pra baixar manual.', 'erro');
+          if (!opts.auto) this.abrirGithubUpdate();
         }
       } catch (e) {
-        // Conexão caiu = o app fechou pra atualizar. Esperado.
+        // Conexão caiu = o app fechou pra atualizar. Esperado (sucesso).
         this.notificar('Atualizando… aguarde o Nexum reabrir.', 'ok');
       }
     },
