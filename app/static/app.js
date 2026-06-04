@@ -505,6 +505,54 @@ function financeiro() {
       await this.carregarDashboard();
     },
 
+    // Exporta um arquivo. No app (janela do PC) o servidor SALVA em Downloads\Nexum
+    // e abre o Explorer, devolvendo JSON com o caminho. Pelo celular/navegador,
+    // devolve o arquivo e o navegador baixa.
+    async baixarArquivo(url, nomePadrao) {
+      try {
+        const r = await fetch(url);
+        if (!r.ok) throw new Error('falha ' + r.status);
+        const ct = r.headers.get('Content-Type') || '';
+        if (ct.includes('application/json')) {
+          const d = await r.json();
+          this.notificar('Excel salvo em ' + (d.arquivo || d.pasta), 'ok');
+          return;
+        }
+        // Download via navegador (acesso remoto)
+        const blob = await r.blob();
+        let nome = nomePadrao;
+        const cd = r.headers.get('Content-Disposition') || '';
+        const mm = cd.match(/filename="?([^"]+)"?/);
+        if (mm) nome = mm[1];
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = nome;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+        this.notificar('Excel exportado', 'ok');
+      } catch (e) {
+        console.error('exportar:', e);
+        this.notificar('Erro ao exportar', 'erro');
+      }
+    },
+
+    exportarTransacoes() {
+      const params = new URLSearchParams();
+      Object.entries(this.filtros).forEach(([k, v]) => {
+        if (v !== '' && v !== false && v !== null) params.set(k, v);
+      });
+      this.baixarArquivo('/api/exportar/transacoes?' + params.toString(), 'transacoes.xlsx');
+    },
+
+    exportarExtrato() {
+      if (!this.extrato.conta_id) return;
+      const params = new URLSearchParams({ conta_id: this.extrato.conta_id });
+      if (this.extrato.mes) params.set('mes', this.extrato.mes);
+      this.baixarArquivo('/api/exportar/extrato?' + params.toString(), 'extrato.xlsx');
+    },
+
     // === Orçamento (aba própria) ===
     async carregarOrcamentos() {
       try {

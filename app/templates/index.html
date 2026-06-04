@@ -595,6 +595,10 @@
                 title="Analisa receitas e identifica estornos automaticamente">
           ↶ Detectar estornos
         </button>
+        <button @click="exportarTransacoes()" class="text-xs text-emerald-500 hover:text-emerald-400 tracking-wider"
+                title="Exporta as transações filtradas em Excel (.xlsx)">
+          ↓ Exportar Excel
+        </button>
         <button @click="abrirModalNovaTransacao()" class="text-xs text-amber-500 hover:text-amber-400 tracking-wider">
           + Nova transação
         </button>
@@ -856,6 +860,13 @@
         <option value="">Todos os meses</option>
         <template x-for="m in extrato.meses_disponiveis"><option :value="m" x-text="m"></option></template>
       </select>
+
+      <button x-show="extrato.conta_id && extrato.items && extrato.items.length > 0"
+              @click="exportarExtrato()"
+              class="ml-auto text-xs text-emerald-500 hover:text-emerald-400 tracking-wider"
+              title="Exporta este extrato em Excel (.xlsx)">
+        ↓ Exportar Excel
+      </button>
     </div>
 
     <!-- Cabeçalho do extrato (saldos) -->

@@ -53,6 +53,16 @@ hiddenimports += [
     "clr",
 ]
 
+# Exportação .xlsx (openpyxl + et_xmlfile, puro Python).
+for pkg in ("openpyxl", "et_xmlfile"):
+    try:
+        d, b, h = collect_all(pkg)
+        datas += d
+        binaries += b
+        hiddenimports += h
+    except Exception:
+        pass
+
 a = Analysis(
     ["run_nexum.py"],
     pathex=[],

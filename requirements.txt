@@ -8,3 +8,5 @@ python-multipart>=0.0.9
 pywebview>=5
 # Leitura de PDF de faturas (puro pip, binário embutido — substitui o Poppler).
 pypdfium2>=4
+# Exportação de transações/extratos em Excel (.xlsx). Puro Python.
+openpyxl>=3.1
