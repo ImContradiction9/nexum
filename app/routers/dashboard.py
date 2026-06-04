@@ -578,11 +578,34 @@ def dashboard(
         ]
         emprestimos_resumo["por_pessoa"].sort(key=lambda x: x["saldo"], reverse=True)
 
-    # Saldo geral (caixa): tudo que entrou e saiu no período — receitas, despesas,
-    # empréstimos (recebido−concedido) e investimentos (resgatado−aplicado).
+    # Componentes gerenciais (mostrados como blocos de apoio no painel).
     emp_liquido = emp_recebido - emp_concedido          # + recebeu mais do que emprestou
     inv_liquido_caixa = inv_resgatado - inv_aplicado     # - aplicou mais do que resgatou
-    saldo_geral = (receitas - despesas) + emp_liquido + inv_liquido_caixa
+
+    # === Saldo geral = SALDO EM CAIXA (variação real do dinheiro nas contas) ===
+    # Soma assinada de TODAS as transações em contas de caixa (não-cartão):
+    # Receita +, Despesa −. Inclui transferências entre contas próprias (que se
+    # anulam naturalmente), pagamento de fatura (a saída real do cartão),
+    # aplicações/resgates de investimento e empréstimos. O gasto NO cartão fica de
+    # fora (só vira caixa quando a fatura é paga). É o número que bate com o
+    # "saldo inicial → saldo final" do extrato. NÃO aplica as exclusões gerenciais
+    # (movimentação/categorias especiais) — aqui tudo que mexeu no caixa conta.
+    caixa_q = (db.query(Transacao.tipo, func.sum(Transacao.valor))
+               .join(Conta, Conta.id == Transacao.conta_id)
+               .filter(
+                   Conta.tipo != "Cartão de Crédito",
+                   (Transacao.suspeita_duplicata == False) | Transacao.suspeita_duplicata.is_(None),
+                   (Transacao.dividida == False) | Transacao.dividida.is_(None),
+               ))
+    if modo_periodo:
+        caixa_q = caixa_q.filter(Transacao.data >= di_obj, Transacao.data <= df_obj)
+    else:
+        caixa_q = caixa_q.filter(Transacao.mes_referencia == mes)
+    saldo_caixa = 0.0
+    for _tp, _soma in caixa_q.group_by(Transacao.tipo).all():
+        _soma = _soma or 0.0
+        saldo_caixa += _soma if _tp == "Receita" else -_soma
+    saldo_geral = saldo_caixa
 
     return {
         "mes": mes,
@@ -590,8 +613,10 @@ def dashboard(
         "receitas": receitas,
         "despesas": despesas,
         "saldo": receitas - despesas,
-        # Saldo geral (caixa) + componentes do período
+        # Saldo geral = saldo em caixa real (variação do dinheiro nas contas) +
+        # componentes gerenciais de apoio (empréstimos/investimentos do período)
         "saldo_geral": round(saldo_geral, 2),
+        "saldo_caixa": round(saldo_caixa, 2),
         "fluxo_emprestimos": {"recebido": round(emp_recebido, 2), "concedido": round(emp_concedido, 2),
                               "liquido": round(emp_liquido, 2)},
         "fluxo_investimentos": {"resgatado": round(inv_resgatado, 2), "aplicado": round(inv_aplicado, 2),

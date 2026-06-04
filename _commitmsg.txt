@@ -1,0 +1,15 @@
+1.0.56: Saldo geral vira SALDO EM CAIXA real (bate com o extrato)
+
+- dashboard: saldo_geral agora e a variacao real do dinheiro nas contas
+  (soma assinada de TODAS as transacoes em contas nao-cartao: Receita +,
+  Despesa -). Inclui transferencias (que se anulam entre contas proprias),
+  pagamento de fatura (saida real do cartao), aplicacoes/resgates e
+  emprestimos. Gasto NO cartao fica de fora (so vira caixa quando a fatura
+  e paga). Bate com saldo inicial -> final do extrato. Novo campo saldo_caixa.
+  Antes era metrica gerencial (P&L) que nao batia com o banco.
+- UI: texto do painel corrigido (transferencias se anulam, nao sao excluidas).
+- Teste test_saldo_geral_e_caixa_real (cartao fora + transferencia anula).
+- Dado: comissao do Mercado Pago (id 475, R$804,55, abr) reclassificada de
+  transferencia -> Receita (Outros recebimentos); era a unica comissao.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>

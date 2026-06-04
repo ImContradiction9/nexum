@@ -230,11 +230,11 @@
       </div>
     </div>
 
-    <!-- Saldo geral (caixa): considera tudo — receitas, despesas, empréstimos, investimentos -->
+    <!-- Saldo geral = saldo em caixa real: variação do dinheiro nas contas (bate com o extrato) -->
     <div x-show="dashboard.saldo_geral !== undefined" class="border border-zinc-800 rounded-lg p-5 mb-8 bg-zinc-900/30">
       <div class="flex items-baseline justify-between mb-4">
         <h3 class="text-sm tracking-widest text-zinc-400">Saldo geral · caixa do período</h3>
-        <span class="text-xs text-zinc-600">Tudo que entrou e saiu (fora transferências entre suas contas)</span>
+        <span class="text-xs text-zinc-600">Variação real do dinheiro nas contas — bate com saldo inicial → final do extrato (transferências entre suas contas se anulam)</span>
       </div>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div>
