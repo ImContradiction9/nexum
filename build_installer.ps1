@@ -7,11 +7,11 @@
 
 $ErrorActionPreference = "Stop"
 
-# 1. Gera o exe único
+# 1. Gera a pasta onedir (dist\Nexum\Nexum.exe + _internal\)
 Write-Host "==> Gerando o executavel..." -ForegroundColor Cyan
 & "$PSScriptRoot\build_exe.ps1"
-if (-not (Test-Path "$PSScriptRoot\dist\Nexum.exe")) {
-    Write-Host "==> FALHOU: dist\Nexum.exe nao existe." -ForegroundColor Red
+if (-not (Test-Path "$PSScriptRoot\dist\Nexum\Nexum.exe")) {
+    Write-Host "==> FALHOU: dist\Nexum\Nexum.exe nao existe." -ForegroundColor Red
     exit 1
 }
 

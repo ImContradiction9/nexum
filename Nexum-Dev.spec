@@ -8,8 +8,10 @@ Idêntico ao Nexum.spec, com duas diferenças:
     isolado do Nexum "de verdade";
   - o exe se chama `Nexum-Dev`.
 
+ONEDIR (igual ao Nexum.spec): saída é a pasta dist/Nexum-Dev/.
+
 Build:  pyinstaller Nexum-Dev.spec   (ou use build_exe.ps1 -Dev)
-Saída:  dist/Nexum-Dev.exe
+Saída:  dist/Nexum-Dev/Nexum-Dev.exe
 """
 from PyInstaller.utils.hooks import collect_all, collect_submodules
 
@@ -83,16 +85,24 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
-    [],
+    [],                       # ONEDIR
+    exclude_binaries=True,    # ONEDIR
     name="Nexum-Dev",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,
-    runtime_tmpdir=None,
     console=False,
     disable_windowed_traceback=False,
     icon="app/static/icon.ico",
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=False,
+    upx_exclude=[],
+    name="Nexum-Dev",         # gera dist/Nexum-Dev/
 )

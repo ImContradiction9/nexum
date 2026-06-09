@@ -1,5 +1,7 @@
 ; Instalador do Nexum (Inno Setup 6)
-; Gera dist\NexumSetup.exe a partir de dist\Nexum.exe (PyInstaller onefile).
+; Gera dist\NexumSetup.exe a partir da pasta dist\Nexum\ (PyInstaller ONEDIR:
+; Nexum.exe + _internal\). Onedir evita o erro de "Failed to load Python DLL"
+; que o onefile causava na 1ª abertura pós-update (corrida com o Defender).
 ;
 ; Instalação POR USUÁRIO (sem admin/UAC): vai para %LocalAppData%\Programs\Nexum.
 ; Os DADOS do usuário ficam em %APPDATA%\Nexum (o exe decide isso em run_nexum.py)
@@ -51,7 +53,8 @@ Name: "startmenuicon"; Description: "Criar atalho no Menu Iniciar (facilita a bu
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
-Source: "dist\Nexum.exe"; DestDir: "{app}"; Flags: ignoreversion
+; ONEDIR: copia Nexum.exe + a pasta _internal\ inteira.
+Source: "dist\Nexum\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 ; Menu Iniciar + Área de Trabalho, ambos opcionais via task (default checked).

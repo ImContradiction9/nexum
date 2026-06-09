@@ -1,8 +1,9 @@
-# Gera o Nexum.exe único (Windows). Rode na raiz do projeto:
+# Gera o Nexum em modo ONEDIR (pasta dist\Nexum\ com Nexum.exe + _internal\).
+# Rode na raiz do projeto:
 #   powershell -ExecutionPolicy Bypass -File build_exe.ps1
 #
 # Requer as dependências instaladas (requirements.txt) + pyinstaller.
-# Saída: dist\Nexum.exe
+# Saída: dist\Nexum\Nexum.exe
 
 $ErrorActionPreference = "Stop"
 
@@ -24,13 +25,13 @@ if (Test-Path dist)  { Remove-Item -Recurse -Force dist }
 Write-Host "==> Empacotando com PyInstaller (pode levar alguns minutos)..." -ForegroundColor Cyan
 & $py -m PyInstaller --clean --noconfirm Nexum.spec
 
-if (Test-Path dist\Nexum.exe) {
-    $tam = [math]::Round((Get-Item dist\Nexum.exe).Length / 1MB, 1)
+if (Test-Path dist\Nexum\Nexum.exe) {
+    $tam = [math]::Round(((Get-ChildItem dist\Nexum -Recurse | Measure-Object Length -Sum).Sum) / 1MB, 1)
     Write-Host ""
-    Write-Host "==> OK! Gerado dist\Nexum.exe ($tam MB)" -ForegroundColor Green
-    Write-Host "    Copie esse unico arquivo para qualquer PC Windows e de duplo-clique."
+    Write-Host "==> OK! Gerada a pasta dist\Nexum\ ($tam MB) com Nexum.exe + _internal\" -ForegroundColor Green
+    Write-Host "    Distribua via instalador (build_installer.ps1). Onedir = sem extracao _MEI em runtime."
     Write-Host "    Dados em %APPDATA%\Nexum (ou em data\ ao lado do exe se houver portable.txt)."
 } else {
-    Write-Host "==> FALHOU: dist\Nexum.exe nao foi gerado." -ForegroundColor Red
+    Write-Host "==> FALHOU: dist\Nexum\Nexum.exe nao foi gerado." -ForegroundColor Red
     exit 1
 }

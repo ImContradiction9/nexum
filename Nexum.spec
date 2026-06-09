@@ -1,12 +1,19 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-Spec do PyInstaller para gerar o Nexum.exe único (Windows).
+Spec do PyInstaller para gerar o Nexum (Windows) em modo ONEDIR (pasta).
 
-Empacota tudo (Python + libs + templates + static + pypdfium2) num só .exe.
-O usuário final NÃO precisa instalar Python nem Poppler.
+Empacota tudo (Python + libs + templates + static + pypdfium2) numa PASTA
+`dist/Nexum/` com `Nexum.exe` + `_internal/`. O usuário final NÃO precisa
+instalar Python nem Poppler.
+
+POR QUE ONEDIR (e não onefile): o onefile extrai tudo pro %TEMP%\\_MEIxxxx a
+CADA execução; na 1ª abertura após um auto-update o Windows Defender varre o
+exe novo e a corrida com a extração quebra o carregamento do python314.dll
+("Failed to load Python DLL ... módulo não encontrado"). Onedir não extrai
+nada em runtime → o erro some.
 
 Build:  pyinstaller Nexum.spec   (ou use build_exe.ps1)
-Saída:  dist/Nexum.exe
+Saída:  dist/Nexum/Nexum.exe (+ dist/Nexum/_internal/)
 """
 from PyInstaller.utils.hooks import collect_all, collect_submodules
 
@@ -82,16 +89,24 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
-    [],
+    [],                       # ONEDIR: binários/datas vão no COLLECT, não no exe
+    exclude_binaries=True,    # ONEDIR
     name="Nexum",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,
-    runtime_tmpdir=None,
     console=False,            # app de janela (sem console preto)
     disable_windowed_traceback=False,
     icon="app/static/icon.ico",
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=False,
+    upx_exclude=[],
+    name="Nexum",             # gera dist/Nexum/ (Nexum.exe + _internal/)
 )
