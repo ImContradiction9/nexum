@@ -293,6 +293,28 @@ def dashboard(
     # Formato esperado depois: [(nome, icone, total)]
     rows_cat = [(n, i, v) for i, n, v in rows_cat]
 
+    # Por origem de recebimento (receitas visíveis, agrupadas por categoria)
+    # Mostra DE ONDE vem o dinheiro que entrou: salário, pró-labore, cashback, etc.
+    # Inclui só receitas que contam como entrada (exclui abatedoras: estorno/reembolso,
+    # que reduzem despesa em vez de contar como receita).
+    origem_totais = {}  # nome -> {"icone", "total"}
+    for tr in todas_trans:
+        if tr.tipo != "Receita" or _eh_abatedora(tr):
+            continue
+        if tr.categoria:
+            nome_o = tr.categoria.nome
+            icone_o = tr.categoria.icone
+        else:
+            nome_o = "Sem categoria"
+            icone_o = None
+        if nome_o not in origem_totais:
+            origem_totais[nome_o] = {"icone": icone_o, "total": 0.0}
+        origem_totais[nome_o]["total"] += tr.valor or 0.0
+    rows_origem = sorted(
+        [(n, d["icone"], d["total"]) for n, d in origem_totais.items() if d["total"] > 0],
+        key=lambda x: x[2], reverse=True,
+    )
+
     # Por atribuição
     atr_totais = {}  # id -> {"nome", "tipo", "cor", "total"}
     todas_com_atr = base.options(
@@ -647,6 +669,9 @@ def dashboard(
         "n_nao_atribuidas": nao_atr,
         "por_categoria": [
             {"nome": n, "icone": i, "total": v} for n, i, v in rows_cat
+        ],
+        "por_origem": [
+            {"nome": n, "icone": i, "total": v} for n, i, v in rows_origem
         ],
         "por_atribuicao": [
             {"nome": n, "tipo": t, "cor": c, "total": v} for n, t, c, v in rows_atr

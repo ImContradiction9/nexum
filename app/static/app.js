@@ -19,6 +19,7 @@ function financeiro() {
       n_nao_categorizadas: 0,
       n_nao_atribuidas: 0,
       por_categoria: [],
+      por_origem: [],
       por_atribuicao: [],
       por_conta: [],
       por_forma: [],
@@ -78,6 +79,7 @@ function financeiro() {
       { id: 'atribuicao',       nome: 'Despesas por atribuição' },
       { id: 'forma',            nome: 'Despesas por forma de pagamento' },
       { id: 'banco',            nome: 'Despesas por banco' },
+      { id: 'origem',           nome: 'Recebimentos por origem' },
       { id: 'receita_despesa',  nome: 'Receitas × despesas' },
     ],
 
@@ -628,6 +630,7 @@ function financeiro() {
       // Tipos baseados em listas nome/total.
       let itens = [];
       if (t === 'categoria')  itens = (d.por_categoria || []).map(c => ({ nome: `${c.icone || ''} ${c.nome}`.trim(), total: c.total }));
+      if (t === 'origem')     itens = (d.por_origem || []).map(c => ({ nome: `${c.icone || ''} ${c.nome}`.trim(), total: c.total }));
       if (t === 'atribuicao') itens = (d.por_atribuicao || []).map(a => ({ nome: a.nome, total: a.total, cor: a.cor }));
       if (t === 'forma')      itens = (d.por_forma || []).map(f => ({ nome: f.nome, total: f.total }));
       if (t === 'banco')      itens = (d.por_banco || []).map(b => ({ nome: b.nome, total: b.total }));

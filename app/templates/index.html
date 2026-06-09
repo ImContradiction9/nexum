@@ -412,9 +412,39 @@
         </div>
       </section>
       <section class="border border-zinc-800 rounded-lg p-5">
-        <h2 class="font-serif text-lg mb-4 text-zinc-300">Evolução mensal (12 meses)</h2>
-        <div class="relative" style="height: 280px;">
-          <canvas id="chart-evolucao"></canvas>
+        <!-- Quando o gráfico é "Recebimentos por origem", o painel da direita
+             vira a tabela de origens (em vez da evolução mensal). -->
+        <div x-show="tipoGrafico === 'origem'">
+          <h2 class="font-serif text-lg mb-4 text-zinc-300">Origem dos recebimentos</h2>
+          <div class="overflow-y-auto pr-1" style="height: 280px;">
+            <template x-for="o in dashboard.por_origem" :key="o.nome">
+              <div class="flex items-center gap-3 py-2 border-b border-zinc-900">
+                <span x-text="o.icone || '•'" class="text-lg w-6"></span>
+                <span class="flex-1 text-sm" x-text="o.nome"></span>
+                <span class="font-mono text-sm text-emerald-400" x-text="brl(o.total)"></span>
+                <span class="font-mono text-xs text-zinc-600 w-12 text-right"
+                      x-text="dashboard.receitas > 0 ? (o.total / dashboard.receitas * 100).toFixed(1) + '%' : '—'"></span>
+              </div>
+            </template>
+            <div x-show="dashboard.por_origem.length > 1"
+                 class="flex items-center gap-3 py-2 mt-1">
+              <span class="w-6"></span>
+              <span class="flex-1 text-sm text-zinc-400 font-medium">Total</span>
+              <span class="font-mono text-sm text-emerald-300 font-medium"
+                    x-text="brl(dashboard.por_origem.reduce((s, o) => s + o.total, 0))"></span>
+              <span class="w-12"></span>
+            </div>
+            <div x-show="dashboard.por_origem.length === 0" class="text-xs text-zinc-600 italic py-2">
+              Nenhum recebimento no período.
+            </div>
+          </div>
+        </div>
+        <!-- Senão, evolução mensal (canvas fica sempre no DOM p/ o Chart.js) -->
+        <div x-show="tipoGrafico !== 'origem'">
+          <h2 class="font-serif text-lg mb-4 text-zinc-300">Evolução mensal (12 meses)</h2>
+          <div class="relative" style="height: 280px;">
+            <canvas id="chart-evolucao"></canvas>
+          </div>
         </div>
       </section>
       </div>
