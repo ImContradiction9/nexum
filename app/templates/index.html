@@ -318,6 +318,56 @@
       </div>
     </div>
 
+    <!-- Pró-labore: quanto peguei × quanto falta pegar (por ano) — só leitura.
+         Só aparece pra quem TEM configuração (gravada via API só no app do dono);
+         dormente p/ o resto da família. -->
+    <div x-show="prolabore.configurado && !blocoOculto('prolabore')"
+         class="border border-zinc-800 rounded-lg p-5 mb-8 bg-zinc-900/30 relative group">
+      <button @click="ocultarBloco('prolabore')"
+              class="absolute right-3 top-3 text-[10px] tracking-wider text-zinc-700 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition">
+        ocultar
+      </button>
+      <div class="flex items-baseline justify-between mb-4">
+        <h3 class="text-sm tracking-widest text-zinc-400">Pró-labore · retiradas</h3>
+      </div>
+
+      <!-- Cabeçalho da tabela -->
+      <div class="flex items-center gap-3 text-[10px] text-zinc-600 mb-1 tracking-wider px-1">
+        <span class="w-14">Ano</span>
+        <span class="w-32 text-right">Pró-labore/mês</span>
+        <span class="w-14 text-right">Meses</span>
+        <span class="w-28 text-right">Devido</span>
+        <span class="w-28 text-right">Peguei</span>
+        <span class="flex-1 text-right">Falta pegar</span>
+      </div>
+      <div class="space-y-0.5">
+        <template x-for="l in prolabore.linhas" :key="l.ano">
+          <div class="flex items-center gap-3 py-2 border-b border-zinc-900 text-sm">
+            <span class="w-14 font-mono text-zinc-300" x-text="l.ano"></span>
+            <span class="w-32 text-right font-mono text-zinc-300" x-text="brl(l.mensal)"></span>
+            <span class="w-14 text-right font-mono text-zinc-500"
+                  x-text="l.meses + (l.ano === prolabore.ano_atual ? '*' : '')"></span>
+            <span class="w-28 text-right font-mono text-zinc-400" x-text="brl(l.devido)"></span>
+            <span class="w-28 text-right font-mono text-emerald-400" x-text="brl(l.pego)"></span>
+            <span class="flex-1 text-right font-mono"
+                  :class="l.falta > 0.005 ? 'text-amber-400' : 'text-zinc-500'"
+                  x-text="l.falta > 0.005 ? brl(l.falta) : (l.falta < -0.005 ? ('+' + brl(-l.falta) + ' a mais') : '— quitado')"></span>
+          </div>
+        </template>
+        <!-- Total -->
+        <div class="flex items-center gap-3 py-2 mt-1 text-sm">
+          <span class="w-14 text-zinc-400 font-medium">Total</span>
+          <span class="w-32"></span>
+          <span class="w-14"></span>
+          <span class="w-28 text-right font-mono text-zinc-400" x-text="brl(prolabore.total_devido)"></span>
+          <span class="w-28 text-right font-mono text-emerald-300 font-medium" x-text="brl(prolabore.total_pego)"></span>
+          <span class="flex-1 text-right font-mono font-medium"
+                :class="prolabore.total_falta > 0.005 ? 'text-amber-300' : 'text-zinc-400'"
+                x-text="prolabore.total_falta > 0.005 ? brl(prolabore.total_falta) : '— em dia'"></span>
+        </div>
+      </div>
+    </div>
+
     <!-- Resumo de empréstimos (saldo acumulado a receber) -->
     <div x-show="dashboard.emprestimos && (dashboard.emprestimos.emprestado > 0 || dashboard.emprestimos.recebido > 0) && !blocoOculto('emprestimos')"
          class="bg-zinc-900/40 border border-zinc-800 rounded-lg p-5 mb-8 relative group">
@@ -1136,14 +1186,64 @@
       </div>
     </div>
 
+    <!-- Posição por tipo de investimento -->
+    <div x-show="resumoInvest && resumoInvest.por_tipo && resumoInvest.por_tipo.length > 0" x-cloak
+         class="border border-zinc-800 rounded-lg p-5 mb-6">
+      <div class="text-xs tracking-wider text-zinc-500 mb-3">Por tipo de investimento</div>
+      <div class="flex items-center gap-3 text-[10px] text-zinc-600 mb-2 tracking-wider px-1">
+        <span class="flex-1">Tipo</span>
+        <span class="w-28 text-right">Investido</span>
+        <span class="w-28 text-right">Posição</span>
+        <span class="w-32 text-right">Rentabilidade</span>
+        <span class="w-16 text-right">% carteira</span>
+      </div>
+      <div class="space-y-0.5">
+        <template x-for="t in resumoInvest.por_tipo" :key="t.tipo">
+          <div class="flex items-center gap-3 py-2 border-b border-zinc-900 text-sm">
+            <span class="flex-1 text-zinc-300" x-text="t.tipo"></span>
+            <span class="w-28 text-right font-mono text-zinc-400" x-text="brl(t.investido_brl)"></span>
+            <span class="w-28 text-right font-mono text-emerald-400" x-text="brl(t.atual_brl)"></span>
+            <span class="w-32 text-right font-mono"
+                  :class="(t.rentab_brl || 0) >= 0 ? 'text-amber-400' : 'text-red-400'"
+                  x-text="(t.rentab_brl>=0?'+':'') + brl(t.rentab_brl)"></span>
+            <span class="w-16 text-right font-mono text-zinc-500"
+                  x-text="(resumoInvest.total_atual_brl > 0 ? (t.atual_brl/resumoInvest.total_atual_brl*100).toFixed(0) : 0) + '%'"></span>
+          </div>
+        </template>
+        <!-- Total -->
+        <div class="flex items-center gap-3 py-2 mt-1 text-sm">
+          <span class="flex-1 text-zinc-400 font-medium">Total</span>
+          <span class="w-28 text-right font-mono text-zinc-400" x-text="brl(resumoInvest.total_investido_brl)"></span>
+          <span class="w-28 text-right font-mono text-emerald-300 font-medium" x-text="brl(resumoInvest.total_atual_brl)"></span>
+          <span class="w-32 text-right font-mono"
+                :class="(resumoInvest.rentab_brl || 0) >= 0 ? 'text-amber-300' : 'text-red-300'"
+                x-text="(resumoInvest.rentab_brl>=0?'+':'') + brl(resumoInvest.rentab_brl)"></span>
+          <span class="w-16 text-right font-mono text-zinc-600">100%</span>
+        </div>
+      </div>
+    </div>
+
     <!-- Evolução do patrimônio -->
     <div x-show="resumoInvest && resumoInvest.n_ativos > 0 && evolucaoTemDados" x-cloak
          class="border border-zinc-800 rounded-lg p-5 mb-6">
-      <div class="text-xs tracking-wider text-zinc-500 mb-3">Evolução do patrimônio</div>
+      <div class="flex items-center justify-between mb-3">
+        <div class="text-xs tracking-wider text-zinc-500">Evolução do patrimônio</div>
+        <div class="flex items-center gap-1 text-[11px]">
+          <button @click="trocarEvolucaoModo('total')"
+                  :class="evolucaoModo==='total' ? 'bg-zinc-700 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'"
+                  class="px-2.5 py-1 rounded">Total</button>
+          <button @click="trocarEvolucaoModo('tipo')"
+                  :class="evolucaoModo==='tipo' ? 'bg-zinc-700 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'"
+                  class="px-2.5 py-1 rounded">Por tipo</button>
+        </div>
+      </div>
       <div style="height: 240px"><canvas id="chart-patrimonio"></canvas></div>
-      <div class="text-[11px] text-zinc-600 mt-2">
+      <div x-show="evolucaoModo==='total'" class="text-[11px] text-zinc-600 mt-2">
         A linha <span class="text-emerald-400">Patrimônio</span> preenche a partir de quando você começa a acompanhar (uma foto por dia);
         <span class="text-blue-400">Investido</span> é o custo acumulado.
+      </div>
+      <div x-show="evolucaoModo==='tipo'" class="text-[11px] text-zinc-600 mt-2">
+        Uma linha por classe. Renda fixa (CDI) é o saldo composto exato; renda variável usa o custo no passado e o valor de mercado no mês atual.
       </div>
     </div>
 

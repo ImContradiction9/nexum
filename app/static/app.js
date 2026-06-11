@@ -30,6 +30,8 @@ function financeiro() {
 
     emprestimos: { pessoas: [], total_a_receber: 0, total_a_pagar: 0, sem_atribuicao: { despesa: 0, receita: 0 } },
 
+    prolabore: { linhas: [], total_devido: 0, total_pego: 0, total_falta: 0, configurado: false, ano_atual: 0, mes_atual: 0 },
+
     orcamentos: { itens: [], total_orcado: 0, total_gasto: 0, mes: '' },
     orcamentoMes: '',   // mês selecionado na aba Orçamento (MM/YYYY)
 
@@ -87,6 +89,7 @@ function financeiro() {
       { id: 'kpis_principais',   nome: 'Receitas / Despesas / Saldo' },
       { id: 'kpis_secundarios',  nome: 'Essenciais / Discricionárias / Investido' },
       { id: 'saldo_geral',       nome: 'Saldo geral (caixa)' },
+      { id: 'prolabore',         nome: 'Pró-labore (retiradas)' },
       { id: 'emprestimos',       nome: 'Empréstimos a terceiros' },
       { id: 'alertas',           nome: 'Avisos de não categorizadas' },
       { id: 'graficos',          nome: 'Gráficos (categoria e evolução)' },
@@ -255,6 +258,8 @@ function financeiro() {
     operacoesPorAtivo: {},  // { ativoId: [op, op, ...] }
     resumoInvest: { n_ativos: 0 },
     evolucaoTemDados: false,
+    evolucaoModo: (localStorage.getItem('nexum_evolucao_modo') || 'total'),  // 'total' | 'tipo'
+    _evoData: null,        // cache da última resposta de /evolucao
     _chartPatrimonio: null,
     alocacao: { linhas: [], total_brl: 0, tem_alvo: false, soma_alvo: 0 },
     alocacaoAlvoEdit: {},
@@ -507,6 +512,13 @@ function financeiro() {
         this.emprestimos = await fetch(`/api/emprestimos/saldo?_=${t}`).then(r => r.json());
       } catch (e) {
         this.emprestimos = { pessoas: [], total_a_receber: 0, total_a_pagar: 0, sem_atribuicao: { despesa: 0, receita: 0 } };
+      }
+
+      // Pró-labore: quanto peguei × quanto falta pegar (por ano; só leitura)
+      try {
+        this.prolabore = await fetch(`/api/prolabore?_=${t}`).then(r => r.json());
+      } catch (e) {
+        this.prolabore = { linhas: [], total_devido: 0, total_pego: 0, total_falta: 0, configurado: false, ano_atual: 0, mes_atual: 0 };
       }
 
       // Renderiza gráficos depois que o DOM atualizar
@@ -2534,33 +2546,57 @@ function financeiro() {
     async renderEvolucaoPatrimonio() {
       try {
         const d = await fetch(`/api/investimentos/evolucao?_=${Date.now()}`).then(r => r.json());
+        this._evoData = d;
         const serie = (d && d.serie) || [];
         this.evolucaoTemDados = serie.length > 0;
         if (!serie.length || typeof Chart === 'undefined') return;
+        // Se não há split por tipo, força modo total.
+        if (this.evolucaoModo === 'tipo' && !(d.tipos && d.tipos.length)) this.evolucaoModo = 'total';
         await this.$nextTick();
-        const el = document.getElementById('chart-patrimonio');
-        if (!el) return;
-        const ex = Chart.getChart(el); if (ex) ex.destroy();
-        if (this._chartPatrimonio) { try { this._chartPatrimonio.destroy(); } catch (e) {} }
-        const fmtMes = (m) => { const [y, mm] = m.split('-'); return mm + '/' + y.slice(2); };
+        this._desenharEvolucao();
+      } catch (e) { /* sem internet (Chart.js CDN) ou sem dados: silencioso */ }
+    },
+
+    trocarEvolucaoModo(modo) {
+      this.evolucaoModo = modo;
+      try { localStorage.setItem('nexum_evolucao_modo', modo); } catch (e) {}
+      this._desenharEvolucao();
+    },
+
+    _desenharEvolucao() {
+      const d = this._evoData;
+      if (!d || typeof Chart === 'undefined') return;
+      const serie = d.serie || [];
+      if (!serie.length) return;
+      const el = document.getElementById('chart-patrimonio');
+      if (!el) return;
+      const ex = Chart.getChart(el); if (ex) ex.destroy();
+      if (this._chartPatrimonio) { try { this._chartPatrimonio.destroy(); } catch (e) {} }
+      const fmtMes = (m) => { const [y, mm] = m.split('-'); return mm + '/' + y.slice(2); };
+      const labels = serie.map(p => fmtMes(p.mes));
+
+      if (this.evolucaoModo === 'tipo' && d.tipos && d.tipos.length) {
+        // Uma LINHA independente por classe (não empilhado) — cada tipo mostra a
+        // própria trajetória, sem "subir junto" por estar em cima de outro.
+        const paleta = ['#34d399', '#60a5fa', '#f59e0b', '#a855f7', '#ec4899',
+                        '#06b6d4', '#84cc16', '#f97316', '#eab308', '#14b8a6', '#ef4444'];
+        const datasets = d.tipos.map((t, i) => {
+          const cor = paleta[i % paleta.length];
+          return {
+            label: t, data: (d.series_tipo[t] || []),
+            borderColor: cor, backgroundColor: cor,
+            fill: false, tension: .25, pointRadius: 0, borderWidth: 2, spanGaps: true,
+          };
+        });
         this._chartPatrimonio = new Chart(el, {
           type: 'line',
-          data: {
-            labels: serie.map(p => fmtMes(p.mes)),
-            datasets: [
-              { label: 'Patrimônio', data: serie.map(p => p.patrimonio),
-                borderColor: '#34d399', backgroundColor: 'rgba(52,211,153,.12)',
-                fill: true, tension: .25, spanGaps: true, pointRadius: 2 },
-              { label: 'Investimentos', data: serie.map(p => p.investido),
-                borderColor: '#60a5fa', borderDash: [4, 4], fill: false, tension: .25, pointRadius: 0 },
-            ],
-          },
+          data: { labels, datasets },
           options: {
             responsive: true, maintainAspectRatio: false,
             interaction: { intersect: false, mode: 'index' },
             plugins: {
               legend: { labels: { color: '#a1a1aa', boxWidth: 12 } },
-              tooltip: { callbacks: { label: (c) => c.dataset.label + ': ' + (c.parsed.y == null ? '—' : this.brl(c.parsed.y)) } },
+              tooltip: { callbacks: { label: (c) => c.dataset.label + ': ' + this.brl(c.parsed.y || 0) } },
             },
             scales: {
               x: { ticks: { color: '#71717a', maxRotation: 0, autoSkip: true }, grid: { color: 'rgba(255,255,255,.04)' } },
@@ -2568,7 +2604,35 @@ function financeiro() {
             },
           },
         });
-      } catch (e) { /* sem internet (Chart.js CDN) ou sem dados: silencioso */ }
+        return;
+      }
+
+      // Modo total: patrimônio + investido.
+      this._chartPatrimonio = new Chart(el, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            { label: 'Patrimônio', data: serie.map(p => p.patrimonio),
+              borderColor: '#34d399', backgroundColor: 'rgba(52,211,153,.12)',
+              fill: true, tension: .25, spanGaps: true, pointRadius: 2 },
+            { label: 'Investimentos', data: serie.map(p => p.investido),
+              borderColor: '#60a5fa', borderDash: [4, 4], fill: false, tension: .25, pointRadius: 0 },
+          ],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          interaction: { intersect: false, mode: 'index' },
+          plugins: {
+            legend: { labels: { color: '#a1a1aa', boxWidth: 12 } },
+            tooltip: { callbacks: { label: (c) => c.dataset.label + ': ' + (c.parsed.y == null ? '—' : this.brl(c.parsed.y)) } },
+          },
+          scales: {
+            x: { ticks: { color: '#71717a', maxRotation: 0, autoSkip: true }, grid: { color: 'rgba(255,255,255,.04)' } },
+            y: { ticks: { color: '#71717a', callback: (v) => this.brl(v) }, grid: { color: 'rgba(255,255,255,.04)' } },
+          },
+        },
+      });
     },
 
     async carregarAlocacao() {

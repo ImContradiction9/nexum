@@ -866,7 +866,7 @@ def evolucao_patrimonio(db: Session = Depends(get_db)):
                      for s in snaps}
 
     if not delta_mes and not patr_snap_mes:
-        return {"serie": []}
+        return {"serie": [], "meses": [], "tipos": [], "series_tipo": {}}
 
     todos = sorted(set(delta_mes) | set(patr_snap_mes))
     meses = _intervalo_meses(todos[0], max(date.today().strftime("%Y-%m"), todos[-1]))
@@ -904,19 +904,60 @@ def evolucao_patrimonio(db: Session = Depends(get_db)):
         return max(custo, 0.0)
 
     patr_recon = {}
+    patr_tipo = {}   # mes -> {tipo: valor reconstruído}
     for m in meses:
         fim = _ultimo_dia_mes(m)
         total = 0.0
+        port = {}
         for a in ativos_patr:
             ops_ate = [op for op in ops_por_ativo.get(a.id, [])
                        if op.data and op.data <= fim]
             if not ops_ate:
                 continue
-            total += _valor_ativo_em(a, ops_ate, fim)
+            v = _valor_ativo_em(a, ops_ate, fim)
+            total += v
+            port[a.tipo] = port.get(a.tipo, 0.0) + v
         patr_recon[m] = total
+        patr_tipo[m] = port
 
     # Snapshots reais vencem a reconstrução (valor de mercado de verdade).
     patr_recon.update(patr_snap_mes)
+
+    # Mês ATUAL: usa a posição AO VIVO por tipo (mesma do resumo/cards e da
+    # cotação de mercado), em vez da reconstrução por custo — assim o último
+    # ponto do empilhado bate com a tabela "Por tipo".
+    try:
+        cambio_mod.sincronizar(db)
+    except Exception:
+        pass
+    _taxas_evo: dict = {}
+    def _taxa_evo(moeda):
+        if moeda not in _taxas_evo:
+            _taxas_evo[moeda] = cambio_mod.taxa_atual(db, moeda)
+        return _taxas_evo[moeda]
+    cot_evo = cotacoes_mod.carregar_cache(db)
+    live_tipo = {}
+    for a in ativos_patr:
+        ser = _serializar_ativo(a, ops_por_ativo.get(a.id, []), serie_cdi,
+                                _taxa_evo(a.moeda), cot_evo)
+        live_tipo[a.tipo] = live_tipo.get(a.tipo, 0.0) + max(ser["saldo_atual_brl"], 0.0)
+    if live_tipo and meses:
+        ult = meses[-1]
+        patr_tipo[ult] = live_tipo
+        patr_recon[ult] = sum(live_tipo.values())
+
+    # Cada tipo é uma LINHA independente (não empilhada), então NÃO escalamos a
+    # composição pra forçar a soma = total: cada classe mostra a própria
+    # trajetória real (renda fixa CDI = saldo composto exato; renda variável =
+    # custo no passado, valor de mercado no mês atual via override ao vivo acima).
+
+    # Ordena os tipos pela posição mais recente (maior primeiro).
+    tipos = sorted(
+        {t for port in patr_tipo.values() for t in port},
+        key=lambda t: -patr_tipo.get(meses[-1], {}).get(t, 0.0),
+    )
+    series_tipo = {t: [round(patr_tipo.get(m, {}).get(t, 0.0), 2) for m in meses]
+                   for t in tipos}
 
     serie = []
     acc = 0.0
@@ -927,4 +968,9 @@ def evolucao_patrimonio(db: Session = Depends(get_db)):
             "investido": round(max(acc, 0.0), 2),
             "patrimonio": round(patr_recon[m], 2) if m in patr_recon else None,
         })
-    return {"serie": serie}
+    return {
+        "serie": serie,
+        "meses": meses,
+        "tipos": tipos,
+        "series_tipo": series_tipo,
+    }

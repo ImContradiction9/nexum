@@ -50,11 +50,11 @@ app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="stat
 from .routers import (
     investimentos, metas, atualizacao, bancos, conciliacao, config,
     emprestimos, categorias, atribuicoes, regras, contas, faturas, transacoes,
-    dashboard, extrato, importar, diagnostico, cambio, rede, exportar,
+    dashboard, extrato, importar, diagnostico, cambio, rede, exportar, prolabore,
 )
 for _mod in (investimentos, metas, atualizacao, bancos, conciliacao, config,
              emprestimos, categorias, atribuicoes, regras, contas, faturas, transacoes,
-             dashboard, extrato, importar, diagnostico, cambio, rede, exportar):
+             dashboard, extrato, importar, diagnostico, cambio, rede, exportar, prolabore):
     app.include_router(_mod.router)
 
 
