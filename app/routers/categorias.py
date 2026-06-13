@@ -16,6 +16,7 @@ def listar_categorias(db: Session = Depends(get_db)):
     cats = db.query(Categoria).filter(Categoria.ativo == True).all()
     return [{"id": c.id, "nome": c.nome, "tipo": c.tipo, "icone": c.icone,
              "orcamento_mensal": c.orcamento_mensal,
+             "orcado": bool(c.orcado),
              "essencial": bool(c.essencial) if c.essencial is not None else True}
             for c in ordena_pt(cats)]
 
@@ -49,6 +50,8 @@ def atualizar_categoria(cid: int, dados: dict, db: Session = Depends(get_db)):
     for campo in ("tipo", "icone", "ativo", "essencial"):
         if campo in dados:
             setattr(c, campo, dados[campo])
+    if "orcado" in dados:
+        c.orcado = bool(dados["orcado"])
     if "orcamento_mensal" in dados:
         c.orcamento_mensal = float(dados["orcamento_mensal"] or 0)
     db.commit()

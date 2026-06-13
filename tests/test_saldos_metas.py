@@ -161,15 +161,18 @@ def test_renda_variavel_nao_deduz(db):
     assert ser["saldo_liquido"] == pytest.approx(5000.0)       # RV não entra no escopo
 
 
-def test_meta_usa_saldo_liquido(db):
+def test_meta_usa_posicao_bruta_igual_carteira(db):
+    # A meta deve bater 1:1 com a carteira: posição BRUTA (sem líquido/IOF) e
+    # rentabilidade = saldo − investido (mesma da aba Investimentos).
     a = _ativo(db, nome="CDB meta", tipo="CDB", saldo_atual=11000.0)
     _op(db, a, "Compra", 10000.0, dias_atras=800)
     saldos = _calcular_saldos_brl(db)
     assert saldos["total_brl"] == pytest.approx(11000.0)
-    assert saldos["total_liquido_brl"] == pytest.approx(10850.0)
     m = Meta(nome="Patrimônio", escopo="patrimonio_total", valor_alvo=20000)
     d = _serializar_meta(m, saldos)
-    assert d["valor_atual"] == pytest.approx(10850.0)          # líquido
+    assert d["valor_atual"] == pytest.approx(11000.0)          # bruto = carteira
+    assert d["aportado"] == pytest.approx(10000.0)             # principal
+    assert d["rendimento"] == pytest.approx(1000.0)            # saldo − investido
     assert d["valor_atual_bruto"] == pytest.approx(11000.0)    # bruto p/ referência
 
 

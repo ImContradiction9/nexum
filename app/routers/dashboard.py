@@ -14,11 +14,129 @@ from .transacoes import _eh_abatedora
 router = APIRouter()
 
 
+def _ultimos_meses(mes_ref: str, n: int) -> list:
+    """Lista os últimos `n` meses 'MM/YYYY' terminando em `mes_ref` (inclusive),
+    em ordem cronológica (mais antigo → mais recente)."""
+    try:
+        mm, yyyy = mes_ref.split("/")
+        m, y = int(mm), int(yyyy)
+    except (ValueError, AttributeError):
+        return []
+    out = []
+    for _ in range(max(n, 1)):
+        out.append(f"{m:02d}/{y}")
+        m -= 1
+        if m < 1:
+            m, y = 12, y - 1
+    return list(reversed(out))
+
+
+@router.get("/api/orcamentos/media")
+def orcamentos_media(mes: Optional[str] = None, meses: int = 6,
+                     db: Session = Depends(get_db)):
+    """Média de gasto por categoria nos últimos `meses` (terminando em `mes`),
+    com marcador de tendência (subindo/descendo) comparando a metade recente vs
+    a metade anterior da janela. Ajuda a planejar o teto do orçamento.
+
+    Retorna todas as categorias de Despesa com gasto na janela (não só as com
+    teto), ordenadas pela média desc."""
+    meses = max(2, min(int(meses or 6), 24))
+    if not mes:
+        ultima = (db.query(Transacao)
+                  .filter(Transacao.mes_referencia.isnot(None))
+                  .order_by(Transacao.id.desc()).first())
+        mes = ultima.mes_referencia if ultima else datetime.now().strftime("%m/%Y")
+
+    janela = _ultimos_meses(mes, meses)
+    if not janela:
+        return {"mes": mes, "meses": meses, "itens": [], "media_total": 0.0,
+                "tendencia": "estavel", "variacao_pct": 0.0}
+
+    cats = db.query(Categoria).filter(Categoria.tipo == "Despesa",
+                                      Categoria.ativo == True).all()
+    cat_por_id = {c.id: c for c in cats}
+
+    trans = (db.query(Transacao)
+             .options(joinedload(Transacao.categoria))
+             .filter(
+                 Transacao.mes_referencia.in_(janela),
+                 Transacao.categoria_id.in_(list(cat_por_id.keys())) if cat_por_id else False,
+                 (Transacao.suspeita_duplicata == False) | Transacao.suspeita_duplicata.is_(None),
+                 (Transacao.dividida == False) | Transacao.dividida.is_(None),
+             ).all()) if cat_por_id else []
+
+    # gasto[cat_id][mes] = gasto líquido (despesa − abatedoras)
+    gasto = {}
+    for tr in trans:
+        if tr.categoria_id not in cat_por_id:
+            continue
+        v = tr.valor or 0.0
+        d = gasto.setdefault(tr.categoria_id, {m: 0.0 for m in janela})
+        if _eh_abatedora(tr):
+            d[tr.mes_referencia] = d.get(tr.mes_referencia, 0.0) - v
+        elif tr.tipo == "Despesa":
+            d[tr.mes_referencia] = d.get(tr.mes_referencia, 0.0) + v
+
+    corte = meses // 2          # metade anterior | metade recente
+    meses_ant = janela[:corte] or janela[:1]
+    meses_rec = janela[corte:] or janela[-1:]
+
+    def _media(vals):
+        return (sum(vals) / len(vals)) if vals else 0.0
+
+    itens = []
+    soma_media = soma_rec = soma_ant = 0.0
+    for cid, por_mes in gasto.items():
+        serie = [max(por_mes.get(m, 0.0), 0.0) for m in janela]
+        media = _media(serie)
+        if media <= 0:
+            continue
+        rec = _media([max(por_mes.get(m, 0.0), 0.0) for m in meses_rec])
+        ant = _media([max(por_mes.get(m, 0.0), 0.0) for m in meses_ant])
+        var = ((rec - ant) / ant * 100) if ant > 0.005 else (100.0 if rec > 0.005 else 0.0)
+        if rec > ant * 1.05 and (rec - ant) > 0.005:
+            tend = "subindo"
+        elif rec < ant * 0.95 and (ant - rec) > 0.005:
+            tend = "descendo"
+        else:
+            tend = "estavel"
+        c = cat_por_id[cid]
+        itens.append({
+            "id": cid, "nome": c.nome, "icone": c.icone,
+            "orcamento": round(c.orcamento_mensal or 0.0, 2),
+            "media": round(media, 2),
+            "recente": round(rec, 2), "anterior": round(ant, 2),
+            "tendencia": tend, "variacao_pct": round(var, 1),
+            "serie": [round(x, 2) for x in serie],
+        })
+        soma_media += media
+        soma_rec += rec
+        soma_ant += ant
+
+    itens.sort(key=lambda x: -x["media"])
+    var_total = ((soma_rec - soma_ant) / soma_ant * 100) if soma_ant > 0.005 else 0.0
+    if soma_rec > soma_ant * 1.05:
+        tend_total = "subindo"
+    elif soma_rec < soma_ant * 0.95:
+        tend_total = "descendo"
+    else:
+        tend_total = "estavel"
+
+    return {
+        "mes": mes, "meses": meses, "janela": janela,
+        "itens": itens,
+        "media_total": round(soma_media, 2),
+        "tendencia": tend_total, "variacao_pct": round(var_total, 1),
+    }
+
+
 @router.get("/api/orcamentos")
 def orcamentos(mes: Optional[str] = None, db: Session = Depends(get_db)):
-    """Acompanhamento de orçamento mensal por categoria: para cada categoria com
-    teto definido (orcamento_mensal > 0), quanto já foi gasto no mês vs o teto.
-    `mes` = "MM/YYYY" (default: mês da última transação, ou o atual)."""
+    """Acompanhamento de orçamento mensal por categoria: para cada categoria que
+    o usuário marcou como "no orçamento" (orcado=True), quanto já foi gasto no mês
+    vs o teto. `mes` = "MM/YYYY" (default: mês da última transação, ou o atual).
+    Categorias sem teto (orcamento_mensal=0) entram como "sem teto" (só acompanha
+    o gasto, não estoura)."""
     if not mes:
         ultima = (db.query(Transacao)
                   .filter(Transacao.mes_referencia.isnot(None))
@@ -26,7 +144,7 @@ def orcamentos(mes: Optional[str] = None, db: Session = Depends(get_db)):
         mes = ultima.mes_referencia if ultima else datetime.now().strftime("%m/%Y")
 
     cats = (db.query(Categoria)
-            .filter(Categoria.orcamento_mensal > 0, Categoria.ativo == True)
+            .filter(Categoria.orcado == True, Categoria.ativo == True)
             .all())
     if not cats:
         return {"mes": mes, "itens": [], "total_orcado": 0.0, "total_gasto": 0.0}
@@ -52,14 +170,17 @@ def orcamentos(mes: Optional[str] = None, db: Session = Depends(get_db)):
     for c in cats:
         g = max(gasto.get(c.id, 0.0), 0.0)
         orc = c.orcamento_mensal or 0.0
+        tem_teto = orc > 0
         itens.append({
             "id": c.id, "nome": c.nome, "icone": c.icone,
             "orcamento": round(orc, 2), "gasto": round(g, 2),
-            "restante": round(orc - g, 2),
-            "pct": round((g / orc * 100) if orc > 0 else 0, 1),
-            "estourou": g > orc,
+            "tem_teto": tem_teto,
+            "restante": round(orc - g, 2) if tem_teto else 0.0,
+            "pct": round((g / orc * 100) if tem_teto else 0, 1),
+            "estourou": tem_teto and g > orc,
         })
-    itens.sort(key=lambda x: -x["pct"])
+    # ordena: com teto primeiro (por % desc), depois sem teto (por gasto desc)
+    itens.sort(key=lambda x: (0 if x["tem_teto"] else 1, -(x["pct"] if x["tem_teto"] else x["gasto"])))
     return {
         "mes": mes,
         "itens": itens,

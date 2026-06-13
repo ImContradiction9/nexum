@@ -11,6 +11,7 @@ from ..deps import get_db
 from ..database import Ativo, OperacaoInvestimento, Meta
 from .. import cdi as cdi_mod
 from .. import cambio as cambio_mod
+from .. import cotacoes as cotacoes_mod
 from .. import impostos
 
 # Moedas aceitas no alvo de uma meta (as que temos cotação BRL via BCB).
@@ -28,6 +29,36 @@ router = APIRouter()
 # ============================================================
 
 import json as _json
+
+# Ritmo de aporte: só conta investimentos a partir deste ano (quando o usuário
+# começou a investir com volume). Aportes anteriores não entram no ritmo.
+_RITMO_ANO_MINIMO = 2026
+
+
+def _meses_calendario(d, hoje) -> int:
+    """Meses-CALENDÁRIO de `d` até `hoje` (inclusive), não dias. Aportar dia 1 ou
+    dia 31 dá o mesmo: maio→junho = 2. Mínimo 1."""
+    if not d:
+        return 1
+    meses = (hoje.year - d.year) * 12 + (hoje.month - d.month) + 1
+    return max(meses, 1)
+
+
+def _ritmo_montante(ids, saldos: dict, hoje) -> float:
+    """Ritmo de aporte do escopo = SOMA dos aportes (montante) dos ativos ÷
+    MESES desde o 1º aporte do escopo. É o que o usuário espera: montante total
+    dividido pelos meses decorridos (não a soma de médias por ativo)."""
+    soma = saldos.get("soma_por_ativo")
+    primeiras = saldos.get("primeira_por_ativo")
+    if soma is None or primeiras is None:
+        # saldos sintéticos (testes): cai no ritmo por-ativo já calculado.
+        rpa = saldos.get("ritmo_por_ativo_mensal", {})
+        return sum(rpa.get(i, 0) for i in ids)
+    total = sum(soma.get(i, 0.0) for i in ids)
+    datas = [primeiras[i] for i in ids if primeiras.get(i)]
+    if total <= 0 or not datas:
+        return 0.0
+    return total / _meses_calendario(min(datas), hoje)
 
 
 def _calcular_saldos_brl(db: Session):
@@ -62,10 +93,15 @@ def _calcular_saldos_brl(db: Session):
         cambio_mod.sincronizar(db)
     except Exception:
         pass
+    # Cotações ao vivo dos ativos de renda variável (mesmo cache da carteira) —
+    # ESSENCIAL pra meta valer o mesmo que a carteira (senão ETF fica no custo).
+    cot = cotacoes_mod.carregar_cache(db)
 
     total_brl = 0.0
     por_tipo = {}
     por_ativo = {}        # {ativo_id: saldo_brl}
+    investido_por_ativo = {}   # {ativo_id: aportado_brl (aportes − resgates, lifetime)}
+    rentab_por_ativo = {}      # {ativo_id: rentab_brl} — MESMA da carteira (bruta, c/ proventos)
     # Versões LÍQUIDAS (IR + IOF estimados) — usadas nas projeções de meta.
     total_liquido_brl = 0.0
     por_tipo_liquido = {}
@@ -83,30 +119,21 @@ def _calcular_saldos_brl(db: Session):
     for a in ativos:
         ativo_por_id[a.id] = a
         ops = por_ativo_ops.get(a.id, [])
-        ultimo_cambio = 1.0
-        if a.moeda != "BRL":
-            # Câmbio de HOJE (mesma cotação da carteira/patrimônio) — mantém metas
-            # e patrimônio consistentes. Só cai pro câmbio da última operação se
-            # não houver cotação atual disponível.
-            ultimo_cambio = cambio_mod.taxa_atual(db, a.moeda)
-            if not ultimo_cambio:
-                ultimo_cambio = 1.0
-                for op in sorted(ops, key=lambda x: x.data, reverse=True):
-                    if op.cotacao_cambio:
-                        ultimo_cambio = op.cotacao_cambio
-                        break
-        # Usa o mesmo saldo da carteira (_serializar_ativo): saldo manual se
-        # informado, senão CDI (renda fixa indexada), senão soma de operações.
-        ser = _serializar_ativo(a, ops, serie)
-        cambio = ultimo_cambio if a.moeda != "BRL" else 1
-        atual_brl = max(ser["saldo_atual"] * cambio, 0)
-        atual_liq_brl = max(ser["saldo_liquido"] * cambio, 0)
+        # IDÊNTICO à carteira (_resumo): câmbio de HOJE + cotações ao vivo. Assim
+        # a posição/rentabilidade da meta bate exatamente com a aba Investimentos.
+        taxa_cambio = cambio_mod.taxa_atual(db, a.moeda) if a.moeda != "BRL" else None
+        ser = _serializar_ativo(a, ops, serie, taxa_cambio, cot)
+        cambio_atual = ser.get("cambio_atual", 1.0)
+        atual_brl = max(ser["saldo_atual_brl"], 0)             # bruto, valor de mercado
+        atual_liq_brl = max(ser["saldo_liquido"] * cambio_atual, 0)
         total_brl += atual_brl
         total_liquido_brl += atual_liq_brl
         por_tipo[a.tipo] = por_tipo.get(a.tipo, 0.0) + atual_brl
         por_tipo_liquido[a.tipo] = por_tipo_liquido.get(a.tipo, 0.0) + atual_liq_brl
         por_ativo[a.id] = atual_brl
         por_ativo_liquido[a.id] = atual_liq_brl
+        investido_por_ativo[a.id] = ser.get("valor_investido_brl", 0.0)
+        rentab_por_ativo[a.id] = ser.get("rentab_brl", 0.0)
 
         # Taxa esperada do ativo: CDI×% para renda fixa indexada, senão 0.
         if a.cdi_percentual and a.tipo in TIPOS_RENDA_FIXA:
@@ -135,26 +162,39 @@ def _calcular_saldos_brl(db: Session):
     primeira_por_tipo = {}
     primeira_por_ativo = {}
     for op in todas_ops:
-        if op.tipo not in ("Compra", "Aporte") or not op.data:
+        if not op.data:
             continue
+        # Ritmo de aporte considera só investimentos de 2026 em diante (quando o
+        # usuário começou a investir com volume); operações anteriores não contam.
+        if op.data.year < _RITMO_ANO_MINIMO:
+            continue
+        # Fluxo LÍQUIDO: aporte (+) menos resgate (−). Dinheiro que entrou e saiu
+        # (ex.: CDB aplicado e resgatado no mesmo mês) não infla o ritmo.
+        if op.tipo in ("Compra", "Aporte"):
+            sinal = 1
+        elif op.tipo in ("Venda", "Resgate"):
+            sinal = -1
+        else:
+            continue   # Rendimento/dividendo não é aporte
         a = ativo_por_id.get(op.ativo_id)
         if not a:
             continue
         cambio = op.cotacao_cambio if op.cotacao_cambio else 1.0
-        valor_brl = (op.valor_total or 0) * (cambio if a.moeda != "BRL" else 1)
+        valor_brl = sinal * (op.valor_total or 0) * (cambio if a.moeda != "BRL" else 1)
         soma_total += valor_brl
         soma_por_tipo[a.tipo] = soma_por_tipo.get(a.tipo, 0.0) + valor_brl
         soma_por_ativo[op.ativo_id] = soma_por_ativo.get(op.ativo_id, 0.0) + valor_brl
-        if primeira_total is None or op.data < primeira_total:
-            primeira_total = op.data
-        if a.tipo not in primeira_por_tipo or op.data < primeira_por_tipo[a.tipo]:
-            primeira_por_tipo[a.tipo] = op.data
-        if op.ativo_id not in primeira_por_ativo or op.data < primeira_por_ativo[op.ativo_id]:
-            primeira_por_ativo[op.ativo_id] = op.data
+        # 1ª data = primeiro APORTE (resgate não inicia contagem de meses).
+        if sinal > 0:
+            if primeira_total is None or op.data < primeira_total:
+                primeira_total = op.data
+            if a.tipo not in primeira_por_tipo or op.data < primeira_por_tipo[a.tipo]:
+                primeira_por_tipo[a.tipo] = op.data
+            if op.ativo_id not in primeira_por_ativo or op.data < primeira_por_ativo[op.ativo_id]:
+                primeira_por_ativo[op.ativo_id] = op.data
 
     def _meses_desde(d):
-        # Meses decorridos desde a data (mínimo 1 mês, p/ início recente não estourar).
-        return max((hoje - d).days / 30.44, 1.0) if d else 1.0
+        return _meses_calendario(d, hoje)
 
     ritmo_mensal_brl = (soma_total / _meses_desde(primeira_total)) if primeira_total else 0.0
     ritmo_por_tipo_mensal = {t: v / _meses_desde(primeira_por_tipo.get(t)) for t, v in soma_por_tipo.items()}
@@ -192,6 +232,13 @@ def _calcular_saldos_brl(db: Session):
         "ritmo_mensal_brl": ritmo_mensal_brl,
         "ritmo_por_tipo_mensal": ritmo_por_tipo_mensal,
         "ritmo_por_ativo_mensal": ritmo_por_ativo_mensal,
+        # Montante aportado e 1ª data por ativo — base do ritmo "montante ÷ meses".
+        "soma_por_ativo": soma_por_ativo,
+        "primeira_por_ativo": primeira_por_ativo,
+        # Aportado (aportes − resgates, lifetime) por ativo — p/ aportado × rendimento.
+        "investido_por_ativo": investido_por_ativo,
+        # Rentabilidade BRUTA por ativo (mesma da carteira, inclui proventos).
+        "rentab_por_ativo": rentab_por_ativo,
         "tipo_por_ativo": {aid: a.tipo for aid, a in ativo_por_id.items()},
         "objetivo_por_ativo": {aid: (a.objetivo or "patrimonio") for aid, a in ativo_por_id.items()},
         "taxa_anual_por_tipo": taxa_anual_por_tipo,
@@ -279,6 +326,14 @@ def _calcular_progresso_meta(meta: Meta, saldos: dict) -> dict:
     except Exception:
         excluir = set()
 
+    hoje = date.today()
+    # Ritmo de aporte = MONTANTE total do escopo ÷ MESES desde o 1º aporte do
+    # escopo (não a soma de médias por ativo). _ritmo_montante cai no método
+    # antigo quando os saldos são sintéticos (testes, sem soma_por_ativo).
+
+    # valor_atual da meta = posição BRUTA (mesma da aba Investimentos / carteira).
+    # Nada de líquido aqui: a meta tem que bater 1:1 com a carteira.
+    ids_escopo = None   # ativos do escopo (p/ aportado × rendimento); None = N/A
     if meta.escopo == "patrimonio_total":
         # Patrimônio = só ativos com objetivo='patrimonio' (exclui reservas de
         # aquisição de bens, ex: carro/casa). Ignorados manuais saem por cima.
@@ -286,48 +341,63 @@ def _calcular_progresso_meta(meta: Meta, saldos: dict) -> dict:
                    if o == "patrimonio" and i not in excluir]
         # Sem o mapa (saldos sintéticos de teste), cai no total geral.
         if objetivo_por_ativo:
-            valor_atual = sum(por_ativo_liq.get(i, 0) for i in ids_pat)
-            valor_atual_bruto = sum(por_ativo_brt.get(i, 0) for i in ids_pat)
-            ritmo = sum(ritmo_por_ativo.get(i, 0) for i in ids_pat)
+            valor_atual = sum(por_ativo_brt.get(i, 0) for i in ids_pat)
+            ritmo = _ritmo_montante(ids_pat, saldos, hoje)
+            ids_escopo = ids_pat
         else:
-            valor_atual = saldos.get("total_liquido_brl", saldos["total_brl"])
-            valor_atual_bruto = saldos["total_brl"]
+            valor_atual = saldos["total_brl"]
             ritmo = saldos["ritmo_mensal_brl"]
             for i in excluir:
-                valor_atual -= por_ativo_liq.get(i, 0)
-                valor_atual_bruto -= por_ativo_brt.get(i, 0)
+                valor_atual -= por_ativo_brt.get(i, 0)
                 ritmo -= ritmo_por_ativo.get(i, 0)
     elif meta.escopo == "tipos_ativo":
         try:
             tipos = _json.loads(meta.escopo_tipos or "[]")
         except Exception:
             tipos = []
-        valor_atual = sum(por_tipo_liq.get(t, 0) for t in tipos)
-        valor_atual_bruto = sum(saldos["por_tipo"].get(t, 0) for t in tipos)
-        ritmo = sum(saldos["ritmo_por_tipo_mensal"].get(t, 0) for t in tipos)
+        valor_atual = sum(saldos.get("por_tipo", {}).get(t, 0) for t in tipos)
         for i in excluir:                       # só os que estão dentro dos tipos do escopo
             if tipo_por_ativo.get(i) in tipos:
-                valor_atual -= por_ativo_liq.get(i, 0)
-                valor_atual_bruto -= por_ativo_brt.get(i, 0)
-                ritmo -= ritmo_por_ativo.get(i, 0)
+                valor_atual -= por_ativo_brt.get(i, 0)
+        ids_tipos = [i for i, t in tipo_por_ativo.items()
+                     if t in tipos and i not in excluir]
+        if saldos.get("soma_por_ativo") is not None:
+            ritmo = _ritmo_montante(ids_tipos, saldos, hoje)
+            ids_escopo = ids_tipos
+        else:  # saldos sintéticos
+            ritmo = sum(saldos.get("ritmo_por_tipo_mensal", {}).get(t, 0) for t in tipos)
     elif meta.escopo == "ativos":
         try:
             ids = _json.loads(meta.escopo_ativos or "[]")
         except Exception:
             ids = []
         ids = [i for i in ids if i not in excluir]
-        valor_atual = sum(por_ativo_liq.get(i, 0) for i in ids)
-        valor_atual_bruto = sum(por_ativo_brt.get(i, 0) for i in ids)
-        ritmo = sum(ritmo_por_ativo.get(i, 0) for i in ids)
+        valor_atual = sum(por_ativo_brt.get(i, 0) for i in ids)
+        ritmo = _ritmo_montante(ids, saldos, hoje)
+        ids_escopo = ids
     else:  # manual
         valor_atual = meta.valor_atual_manual or 0
-        valor_atual_bruto = valor_atual
         ritmo = 0
 
-    # Clamp (exclusões/líquido podem gerar resíduo negativo).
+    # Clamp (exclusões podem gerar resíduo negativo).
     valor_atual = max(valor_atual, 0.0)
-    valor_atual_bruto = max(valor_atual_bruto, 0.0)
     ritmo = max(ritmo, 0.0)
+    valor_atual_bruto = valor_atual   # compat: meta usa bruto (sem líquido)
+
+    # Aportado × rendimento do escopo — IGUAIS à carteira:
+    #   aportado   = total investido (aportes − resgates), por ativo;
+    #   rendimento = rentabilidade da carteira (saldo − investido + proventos), bruta.
+    inv_por_ativo = saldos.get("investido_por_ativo")
+    rentab_pa = saldos.get("rentab_por_ativo")
+    if ids_escopo is not None and inv_por_ativo is not None:
+        aportado = max(sum(inv_por_ativo.get(i, 0.0) for i in ids_escopo), 0.0)
+        if rentab_pa is not None:
+            rendimento = sum(rentab_pa.get(i, 0.0) for i in ids_escopo)
+        else:
+            rendimento = valor_atual - aportado
+    else:
+        aportado = None
+        rendimento = None
 
     # Alvo convertido pra BRL pela cotação atual (ajusta sozinho conforme o câmbio).
     # Tudo abaixo (percentual, falta, projeção, aporte) usa o alvo EM BRL, porque
@@ -382,6 +452,9 @@ def _calcular_progresso_meta(meta: Meta, saldos: dict) -> dict:
     return {
         "valor_atual": round(valor_atual, 2),
         "valor_atual_bruto": round(valor_atual_bruto, 2),
+        # Aportado (principal) × rendimento (valor atual − aportado). None p/ meta manual.
+        "aportado": round(aportado, 2) if aportado is not None else None,
+        "rendimento": round(rendimento, 2) if rendimento is not None else None,
         "valor_alvo_brl": round(valor_alvo_brl, 2),   # alvo convertido pra BRL (câmbio atual)
         "cambio_usado": round(taxa_cambio, 4) if moeda_meta != "BRL" else None,
         "percentual": round(percentual, 2),

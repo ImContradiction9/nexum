@@ -1700,6 +1700,29 @@
             </div>
           </div>
 
+          <!-- Aportado × Rendimento (composição do valor atual) -->
+          <div x-show="m.aportado !== null && m.aportado !== undefined"
+               class="grid grid-cols-2 gap-3 text-xs mb-3">
+            <div class="bg-zinc-950/60 border border-zinc-800/60 rounded px-3 py-2">
+              <div class="text-zinc-500 tracking-wider text-[10px] mb-0.5">Aportado</div>
+              <div class="font-mono text-blue-300">
+                <span x-text="formatarBRL(m.aportado)"></span>
+                <span class="text-zinc-600 text-[10px]"
+                      x-show="Math.abs((m.aportado||0)+(m.rendimento||0)) > 0.005"
+                      x-text="'(' + ((m.aportado||0)/((m.aportado||0)+(m.rendimento||0))*100).toFixed(2) + '%)'"></span>
+              </div>
+            </div>
+            <div class="bg-zinc-950/60 border border-zinc-800/60 rounded px-3 py-2">
+              <div class="text-zinc-500 tracking-wider text-[10px] mb-0.5">Rendimento</div>
+              <div class="font-mono" :class="(m.rendimento||0) >= 0 ? 'text-emerald-400' : 'text-red-400'">
+                <span x-text="((m.rendimento||0) >= 0 ? '+' : '') + formatarBRL(m.rendimento)"></span>
+                <span class="text-zinc-600 text-[10px]"
+                      x-show="Math.abs((m.aportado||0)+(m.rendimento||0)) > 0.005"
+                      x-text="'(' + ((m.rendimento||0)/((m.aportado||0)+(m.rendimento||0))*100).toFixed(2) + '%)'"></span>
+              </div>
+            </div>
+          </div>
+
           <!-- Métricas de prazo / ritmo / projeção -->
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs"
                x-show="m.percentual < 100">
@@ -1946,25 +1969,47 @@
   <main x-show="view==='orcamento'" class="max-w-[1600px] mx-auto px-8 py-8">
     <div class="flex items-center justify-between mb-6 flex-wrap gap-3">
       <h2 class="text-lg tracking-wide text-zinc-300">Orçamento mensal</h2>
-      <!-- Seletor de período (mês) -->
-      <div class="flex items-center gap-2">
-        <button @click="mudarMesOrcamento(-1)"
-                class="px-2 py-1.5 text-sm rounded border border-zinc-800 bg-zinc-900 text-zinc-400 hover:border-zinc-700">‹</button>
-        <select x-model="orcamentoMes" @change="carregarOrcamentos()"
-                class="appearance-none px-3 py-1.5 text-xs rounded border border-amber-500 bg-amber-500 text-zinc-950 font-medium font-mono cursor-pointer focus:outline-none"
-                style="background-image: none;">
-          <template x-if="orcamentoMes && !dashboard.meses_disponiveis.includes(orcamentoMes)">
-            <option :value="orcamentoMes" x-text="orcamentoMes"></option>
+      <div class="flex items-center gap-3 flex-wrap">
+        <!-- Botão editar tetos -->
+        <button x-show="!editandoOrcamentos" @click="iniciarEdicaoOrcamentos()"
+                class="px-3 py-1.5 text-xs rounded border border-zinc-800 bg-zinc-900 text-zinc-300 hover:border-amber-700 hover:text-amber-400">
+          ✎ Editar orçamentos
+        </button>
+        <div x-show="editandoOrcamentos" class="flex items-center gap-2">
+          <button @click="salvarOrcamentos()"
+                  class="px-3 py-1.5 text-xs rounded bg-amber-500 hover:bg-amber-400 text-zinc-950 font-medium">Salvar</button>
+          <button @click="cancelarEdicaoOrcamentos()"
+                  class="px-3 py-1.5 text-xs rounded border border-zinc-800 bg-zinc-900 text-zinc-400 hover:border-zinc-700">Cancelar</button>
+        </div>
+        <!-- Janela da média -->
+        <div class="flex items-center gap-1 text-[11px]">
+          <span class="text-zinc-600 mr-1">média</span>
+          <template x-for="n in [3,6,12]" :key="n">
+            <button @click="mudarMediaMeses(n)"
+                    :class="orcamentoMediaMeses===n ? 'bg-zinc-700 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'"
+                    class="px-2 py-1 rounded" x-text="n + 'm'"></button>
           </template>
-          <template x-for="m in dashboard.meses_disponiveis" :key="m"><option :value="m" x-text="m"></option></template>
-        </select>
-        <button @click="mudarMesOrcamento(1)"
-                class="px-2 py-1.5 text-sm rounded border border-zinc-800 bg-zinc-900 text-zinc-400 hover:border-zinc-700">›</button>
+        </div>
+        <!-- Seletor de período (mês) -->
+        <div class="flex items-center gap-2">
+          <button @click="mudarMesOrcamento(-1)"
+                  class="px-2 py-1.5 text-sm rounded border border-zinc-800 bg-zinc-900 text-zinc-400 hover:border-zinc-700">‹</button>
+          <select x-model="orcamentoMes" @change="carregarOrcamentos()"
+                  class="appearance-none px-3 py-1.5 text-xs rounded border border-amber-500 bg-amber-500 text-zinc-950 font-medium font-mono cursor-pointer focus:outline-none"
+                  style="background-image: none;">
+            <template x-if="orcamentoMes && !dashboard.meses_disponiveis.includes(orcamentoMes)">
+              <option :value="orcamentoMes" x-text="orcamentoMes"></option>
+            </template>
+            <template x-for="m in dashboard.meses_disponiveis" :key="m"><option :value="m" x-text="m"></option></template>
+          </select>
+          <button @click="mudarMesOrcamento(1)"
+                  class="px-2 py-1.5 text-sm rounded border border-zinc-800 bg-zinc-900 text-zinc-400 hover:border-zinc-700">›</button>
+        </div>
       </div>
     </div>
 
-    <!-- Resumo do mês -->
-    <div x-show="orcamentos.itens && orcamentos.itens.length > 0" class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+    <!-- Resumo do mês + média do período -->
+    <div x-show="!editandoOrcamentos && orcamentos.itens && orcamentos.itens.length > 0" class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
       <div class="border border-zinc-800 rounded-lg p-4">
         <div class="text-xs tracking-wider text-zinc-500 mb-1">Orçado</div>
         <div class="font-serif text-2xl text-zinc-200" x-text="brl(orcamentos.total_orcado)"></div>
@@ -1979,11 +2024,25 @@
         <div class="font-serif text-2xl" :class="(orcamentos.total_orcado - orcamentos.total_gasto) < 0 ? 'text-red-400' : 'text-emerald-400'"
              x-text="brl(orcamentos.total_orcado - orcamentos.total_gasto)"></div>
       </div>
+      <!-- Média do período + tendência geral -->
+      <div class="border rounded-lg p-4"
+           :class="orcamentoMedia.tendencia==='subindo' ? 'border-red-800/60' : (orcamentoMedia.tendencia==='descendo' ? 'border-emerald-800/60' : 'border-zinc-800')">
+        <div class="text-xs tracking-wider text-zinc-500 mb-1" x-text="'Média ' + orcamentoMedia.meses + 'm'"></div>
+        <div class="font-serif text-2xl text-zinc-200 flex items-baseline gap-2">
+          <span x-text="brl(orcamentoMedia.media_total)"></span>
+          <span class="text-sm font-sans"
+                :class="orcamentoMedia.tendencia==='subindo' ? 'text-red-400' : (orcamentoMedia.tendencia==='descendo' ? 'text-emerald-400' : 'text-zinc-500')"
+                x-text="(orcamentoMedia.tendencia==='subindo' ? '▲' : (orcamentoMedia.tendencia==='descendo' ? '▼' : '→')) + ' ' + (orcamentoMedia.variacao_pct>0?'+':'') + orcamentoMedia.variacao_pct + '%'"></span>
+        </div>
+        <div class="text-[11px] mt-0.5"
+             :class="orcamentoMedia.tendencia==='subindo' ? 'text-red-400/80' : (orcamentoMedia.tendencia==='descendo' ? 'text-emerald-400/80' : 'text-zinc-600')"
+             x-text="orcamentoMedia.tendencia==='subindo' ? 'gasto subindo' : (orcamentoMedia.tendencia==='descendo' ? 'gasto caindo' : 'estável')"></div>
+      </div>
     </div>
 
-    <!-- Barras por categoria -->
-    <div x-show="orcamentos.itens && orcamentos.itens.length > 0" class="border border-zinc-800 rounded-lg p-5">
-      <div class="grid sm:grid-cols-2 gap-x-8 gap-y-3">
+    <!-- Barras por categoria (com média + tendência) -->
+    <div x-show="!editandoOrcamentos && orcamentos.itens && orcamentos.itens.length > 0" class="border border-zinc-800 rounded-lg p-5">
+      <div class="grid sm:grid-cols-2 gap-x-8 gap-y-4">
         <template x-for="o in orcamentos.itens" :key="o.id">
           <div>
             <div class="flex items-baseline justify-between text-sm mb-1">
@@ -1992,26 +2051,84 @@
               </span>
               <span class="font-mono text-xs whitespace-nowrap"
                     :class="o.estourou ? 'text-red-400' : 'text-zinc-400'">
-                <span x-text="brl(o.gasto)"></span> / <span x-text="brl(o.orcamento)"></span>
+                <span x-text="brl(o.gasto)"></span>
+                <span x-show="o.tem_teto"> / <span x-text="brl(o.orcamento)"></span></span>
+                <span x-show="!o.tem_teto" class="text-zinc-600"> · sem teto</span>
               </span>
             </div>
+            <!-- Barra: com teto = % do teto; sem teto = % da média (referência) -->
             <div class="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-              <div class="h-full rounded-full transition-all"
+              <div x-show="o.tem_teto" class="h-full rounded-full transition-all"
                    :class="o.pct >= 100 ? 'bg-red-500' : (o.pct >= 80 ? 'bg-amber-500' : 'bg-emerald-500')"
                    :style="'width: ' + Math.min(o.pct, 100) + '%'"></div>
+              <div x-show="!o.tem_teto" class="h-full rounded-full bg-zinc-600 transition-all"
+                   :style="'width: ' + (mediaDe(o.id) && mediaDe(o.id).media > 0 ? Math.min(o.gasto / mediaDe(o.id).media * 100, 100) : 0) + '%'"></div>
             </div>
-            <div class="text-[11px] mt-1"
-                 :class="o.estourou ? 'text-red-400' : 'text-zinc-600'"
-                 x-text="o.estourou ? ('estourou ' + brl(-o.restante)) : ('restam ' + brl(o.restante) + ' · ' + o.pct.toFixed(0) + '%')"></div>
+            <div class="flex items-baseline justify-between mt-1">
+              <span class="text-[11px]"
+                    :class="o.estourou ? 'text-red-400' : 'text-zinc-600'"
+                    x-text="o.tem_teto ? (o.estourou ? ('estourou ' + brl(-o.restante)) : ('restam ' + brl(o.restante) + ' · ' + o.pct.toFixed(0) + '%')) : 'acompanhando (sem teto)'"></span>
+              <!-- Média do período + seta de tendência -->
+              <template x-if="mediaDe(o.id)">
+                <span class="text-[11px] font-mono whitespace-nowrap"
+                      :class="mediaDe(o.id).tendencia==='subindo' ? 'text-red-400' : (mediaDe(o.id).tendencia==='descendo' ? 'text-emerald-400' : 'text-zinc-500')"
+                      :title="'média dos últimos ' + orcamentoMedia.meses + ' meses'">
+                  <span x-text="'méd ' + brl(mediaDe(o.id).media)"></span>
+                  <span x-text="mediaDe(o.id).tendencia==='subindo' ? '▲' : (mediaDe(o.id).tendencia==='descendo' ? '▼' : '→')"></span>
+                </span>
+              </template>
+            </div>
           </div>
         </template>
       </div>
     </div>
 
     <!-- Vazio -->
-    <div x-show="!orcamentos.itens || orcamentos.itens.length === 0" class="text-sm text-zinc-500 border border-zinc-800 rounded-lg p-6 text-center">
-      Nenhuma categoria com orçamento definido. Defina um teto mensal em
-      <button @click="view='config'; subView='categorias'; carregarCategoriasDetalhe()" class="text-amber-500 hover:text-amber-400 underline">Configurações → Categorias</button>.
+    <div x-show="!editandoOrcamentos && (!orcamentos.itens || orcamentos.itens.length === 0)" class="text-sm text-zinc-500 border border-zinc-800 rounded-lg p-6 text-center">
+      Nenhuma categoria com orçamento definido. Clique em
+      <button @click="iniciarEdicaoOrcamentos()" class="text-amber-500 hover:text-amber-400 underline">Editar orçamentos</button>
+      pra definir os tetos.
+    </div>
+
+    <!-- Edição de orçamentos (todas as categorias de Despesa) -->
+    <div x-show="editandoOrcamentos" class="border border-amber-900/40 bg-amber-950/10 rounded-lg p-5">
+      <div class="flex items-center justify-between mb-3">
+        <span class="text-xs tracking-wider text-zinc-400">Marque o que entra no orçamento e defina o teto (opcional)</span>
+        <span class="text-[11px] text-zinc-600" x-text="'média = últimos ' + orcamentoMediaMeses + ' meses'"></span>
+      </div>
+      <div class="grid sm:grid-cols-2 gap-x-8 gap-y-1">
+        <template x-for="c in categoriasDespesa" :key="c.id">
+          <label class="flex items-center gap-3 py-1.5 border-b border-zinc-900 cursor-pointer"
+                 :class="orcamentoOrcadoEdit[c.id] ? '' : 'opacity-50'">
+            <input type="checkbox" x-model="orcamentoOrcadoEdit[c.id]"
+                   class="accent-amber-500 w-4 h-4 shrink-0"
+                   :title="orcamentoOrcadoEdit[c.id] ? 'no orçamento' : 'fora do orçamento'">
+            <span class="flex-1 text-sm text-zinc-300 truncate">
+              <span x-show="c.icone" x-text="c.icone" class="mr-1"></span><span x-text="c.nome"></span>
+            </span>
+            <!-- sugestão pela média (clicável) -->
+            <template x-if="mediaDe(c.id)">
+              <button type="button" @click="usarMediaComoTeto(c.id)"
+                      class="text-[11px] font-mono text-zinc-600 hover:text-amber-400 whitespace-nowrap"
+                      :title="'usar a média (' + brl(mediaDe(c.id).media) + ') como teto'">
+                <span x-text="'méd ' + brl(mediaDe(c.id).media)"></span>
+                <span :class="mediaDe(c.id).tendencia==='subindo' ? 'text-red-400' : (mediaDe(c.id).tendencia==='descendo' ? 'text-emerald-400' : '')"
+                      x-text="mediaDe(c.id).tendencia==='subindo' ? '▲' : (mediaDe(c.id).tendencia==='descendo' ? '▼' : '→')"></span>
+              </button>
+            </template>
+            <span class="text-zinc-600 text-xs">R$</span>
+            <input type="number" min="0" step="50" x-model="orcamentoEdit[c.id]" placeholder="sem teto"
+                   @keydown.enter="salvarOrcamentos()"
+                   class="w-24 bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-right font-mono text-zinc-200">
+          </label>
+        </template>
+      </div>
+      <div class="flex items-center justify-end gap-2 mt-4">
+        <button @click="cancelarEdicaoOrcamentos()"
+                class="px-3 py-1.5 text-xs rounded border border-zinc-800 bg-zinc-900 text-zinc-400 hover:border-zinc-700">Cancelar</button>
+        <button @click="salvarOrcamentos()"
+                class="px-3 py-1.5 text-xs rounded bg-amber-500 hover:bg-amber-400 text-zinc-950 font-medium">Salvar orçamentos</button>
+      </div>
     </div>
   </main>
 

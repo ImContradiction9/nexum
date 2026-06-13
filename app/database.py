@@ -69,6 +69,9 @@ class Categoria(Base):
     nome = Column(String, unique=True, nullable=False)
     tipo = Column(String, nullable=False)                       # "Despesa" | "Receita"
     orcamento_mensal = Column(Float, default=0)
+    # "Entra no orçamento": o usuário escolhe quais categorias acompanhar no
+    # Orçamento (previsíveis sim, esporádicas não) — independente de ter teto.
+    orcado = Column(Boolean, default=False)
     ativo = Column(Boolean, default=True)
     icone = Column(String)                                      # emoji opcional
     essencial = Column(Boolean, default=True)                   # padrão: essencial. False = discricionário/desejos.
@@ -515,6 +518,10 @@ def _aplicar_migracoes(engine):
     # v1.20 — moeda da meta (alvo em moeda estrangeira, ajustado pela cotação)
     add_column_if_missing("metas", "moeda", "VARCHAR DEFAULT 'BRL'")
     _autofill_cdi_percentual(engine)
+    # v1.21 — flag "entra no orçamento" por categoria (decopla inclusão do teto).
+    # Backfill: quem já tinha teto (>0) entra no orçamento; o resto fica de fora.
+    add_column_if_missing("categorias", "orcado", "BOOLEAN")
+    _backfill_orcado(engine)
     # v1.7 — remove unique constraint do nome da conta (permite múltiplas com mesmo nome)
     _drop_unique_index_se_existir(engine, "contas", "nome")
 
@@ -658,6 +665,22 @@ def _corrigir_saldos_ofx_inconfiaveis(engine):
                 "UPDATE faturas SET saldo_inicial = NULL, saldo_final = NULL "
                 "WHERE conta_id = :c"
             ), {"c": conta_id})
+
+
+def _backfill_orcado(engine):
+    """Marca como 'no orçamento' (orcado=1) as categorias que já tinham teto
+    (orcamento_mensal > 0); as demais ficam fora (0). Só toca em linhas com
+    orcado NULL — idempotente."""
+    from sqlalchemy import text
+    with engine.begin() as conn:
+        try:
+            conn.execute(text(
+                "UPDATE categorias SET orcado = CASE "
+                "WHEN COALESCE(orcamento_mensal, 0) > 0 THEN 1 ELSE 0 END "
+                "WHERE orcado IS NULL"
+            ))
+        except Exception:
+            pass
 
 
 def _autofill_cdi_percentual(engine):

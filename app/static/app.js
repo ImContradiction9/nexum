@@ -34,6 +34,15 @@ function financeiro() {
 
     orcamentos: { itens: [], total_orcado: 0, total_gasto: 0, mes: '' },
     orcamentoMes: '',   // mês selecionado na aba Orçamento (MM/YYYY)
+    // Média por período + tendência (subindo/descendo) p/ planejar o teto
+    orcamentoMedia: { itens: [], media_total: 0, tendencia: 'estavel', variacao_pct: 0, meses: 6 },
+    orcamentoMediaMeses: parseInt(localStorage.getItem('nexum_orc_media_meses') || '6', 10),
+    _mediaPorCat: {},   // { cat_id: item de média } p/ lookup rápido nas barras
+    // Edição de orçamento direto na aba
+    editandoOrcamentos: false,
+    categoriasDespesa: [],   // todas as categorias de Despesa (p/ editar tetos)
+    orcamentoEdit: {},       // { cat_id: 'valor do teto' } editável
+    orcamentoOrcadoEdit: {}, // { cat_id: true/false } — entra no orçamento?
 
     // Transações
     transacoes: [],
@@ -590,6 +599,80 @@ function financeiro() {
       } catch (e) {
         this.orcamentos = { itens: [], total_orcado: 0, total_gasto: 0, mes: this.orcamentoMes };
       }
+      await this.carregarOrcamentoMedia();
+    },
+
+    async carregarOrcamentoMedia() {
+      try {
+        const pmes = this.orcamentoMes ? `&mes=${encodeURIComponent(this.orcamentoMes)}` : '';
+        const d = await fetch(`/api/orcamentos/media?meses=${this.orcamentoMediaMeses}${pmes}&_=${Date.now()}`).then(r => r.json());
+        this.orcamentoMedia = d;
+        const map = {};
+        (d.itens || []).forEach(i => { map[i.id] = i; });
+        this._mediaPorCat = map;
+      } catch (e) {
+        this.orcamentoMedia = { itens: [], media_total: 0, tendencia: 'estavel', variacao_pct: 0, meses: this.orcamentoMediaMeses };
+        this._mediaPorCat = {};
+      }
+    },
+
+    mudarMediaMeses(n) {
+      this.orcamentoMediaMeses = n;
+      try { localStorage.setItem('nexum_orc_media_meses', String(n)); } catch (e) {}
+      this.carregarOrcamentoMedia();
+    },
+
+    mediaDe(catId) { return this._mediaPorCat[catId] || null; },
+
+    // Abre o modo de edição dos tetos: lista TODAS as categorias de Despesa.
+    async iniciarEdicaoOrcamentos() {
+      try {
+        const cats = await fetch(`/api/categorias?_=${Date.now()}`).then(r => r.json());
+        this.categoriasDespesa = (cats || []).filter(c => c.tipo === 'Despesa' && c.ativo !== false);
+        const ed = {}, orc = {};
+        this.categoriasDespesa.forEach(c => {
+          ed[c.id] = c.orcamento_mensal ? String(c.orcamento_mensal) : '';
+          orc[c.id] = !!c.orcado;
+        });
+        this.orcamentoEdit = ed;
+        this.orcamentoOrcadoEdit = orc;
+        this.editandoOrcamentos = true;
+      } catch (e) {
+        this.notificar('Erro ao carregar categorias', 'erro');
+      }
+    },
+
+    cancelarEdicaoOrcamentos() { this.editandoOrcamentos = false; },
+
+    async salvarOrcamentos() {
+      // PATCH nas categorias cujo teto OU flag "no orçamento" mudou.
+      const mudou = [];
+      this.categoriasDespesa.forEach(c => {
+        const novoTeto = parseFloat(String(this.orcamentoEdit[c.id] ?? '').replace(',', '.')) || 0;
+        const novoOrcado = !!this.orcamentoOrcadoEdit[c.id];
+        const mudouTeto = Math.abs(novoTeto - (c.orcamento_mensal || 0)) > 0.005;
+        const mudouOrcado = novoOrcado !== !!c.orcado;
+        if (mudouTeto || mudouOrcado) mudou.push({ id: c.id, orcamento_mensal: novoTeto, orcado: novoOrcado });
+      });
+      try {
+        for (const m of mudou) {
+          await fetch(`/api/categorias/${m.id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orcamento_mensal: m.orcamento_mensal, orcado: m.orcado }),
+          });
+        }
+        this.editandoOrcamentos = false;
+        await this.carregarOrcamentos();
+        this.notificar(mudou.length ? `${mudou.length} categoria(s) atualizadas` : 'Nada para salvar', 'sucesso');
+      } catch (e) {
+        this.notificar('Erro ao salvar orçamentos', 'erro');
+      }
+    },
+
+    // Usa a média do período como teto sugerido (no modo edição).
+    usarMediaComoTeto(catId) {
+      const m = this.mediaDe(catId);
+      if (m) this.orcamentoEdit[catId] = String(Math.round(m.media));
     },
 
     // Navega meses no seletor de orçamento (delta = -1 anterior, +1 próximo).
