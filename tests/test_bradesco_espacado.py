@@ -8,7 +8,7 @@ da "Previsão de fechamento da próxima fatura".
 """
 from datetime import date
 
-from app.parsers.bradesco import _parse_visa, _dia_mes
+from app.parsers.bradesco import _parse_visa, _parse_amazon, _dia_mes
 
 
 def test_dia_mes_tolera_espacos():
@@ -50,6 +50,27 @@ def test_parse_visa_datas_espacadas():
     assert by_desc["MP*CLIMARIO"]["cartao_final4"] == "2028"
     # Mês <= vencimento fica no ano do vencimento.
     assert by_desc["LINDT SPRUNGLI"]["data_compra"] == date(2026, 1, 29)
+
+
+def test_compra_internacional_em_duas_linhas():
+    """Compra internacional: data+descrição numa linha e o valor (USD ... R$) na
+    seguinte. Vale para os dois layouts (VISA e Amazon)."""
+    texto = "\n".join([
+        "  27/05   Preply BERLIN DEU                              de 1% a.m. + Multa de 2%",
+        "                                  USD 18,30        18,30   5,3300       97,54",
+    ])
+    venc = date(2026, 6, 15)
+    infer = lambda m: venc.year - 1 if m > venc.month else venc.year
+    for parser in (_parse_visa, _parse_amazon):
+        txs = parser(texto, venc, infer)
+        assert len(txs) == 1, parser.__name__
+        t = txs[0]
+        assert t["descricao"] == "Preply BERLIN DEU"
+        assert t["valor"] == 97.54                 # valor em R$ (último número)
+        assert t["data_compra"] == date(2026, 5, 27)
+        assert t["moeda_original"] == "USD"
+        assert t["valor_original"] == 18.30
+        assert t["cotacao"] == 5.33
 
 
 def test_parse_visa_ignora_pagamento_e_totais():

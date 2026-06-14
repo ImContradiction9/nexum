@@ -16,12 +16,29 @@ Quando o usuário CORRIGE uma transação:
   - Não toca em transações antigas com a mesma descrição (decisões anteriores
     do usuário ficam preservadas), mas TODAS as próximas vão usar a memória nova.
 """
+import re
 from dataclasses import dataclass
 from typing import Optional
 from sqlalchemy.orm import Session
 
 from .database import Categoria, Atribuicao, Regra, Memoria, Transacao
 from .utils import normalizar_descricao
+
+
+# Lojas "marketplace" (vendem de tudo): o nome não diz a categoria, então NÃO
+# auto-categorizamos por memória/regra — a não ser que seja uma parcela de uma
+# compra que o usuário já categorizou (a herança entre parcelas cobre esse caso
+# na importação). Atribuição (pra quem) continua valendo normalmente.
+_RE_MARKETPLACE = re.compile(
+    r"AMAZON|MERCADO\s*LIVRE|MERCADOLIVRE|MERCADO\s*LIBRE|MERCADOLIBRE",
+    re.IGNORECASE,
+)
+
+
+def _eh_marketplace(descricao: str) -> bool:
+    """True se a descrição é de uma compra Amazon/Mercado Livre (categoria não
+    deve ser inferida automaticamente)."""
+    return bool(_RE_MARKETPLACE.search(descricao or ""))
 
 
 @dataclass
@@ -53,13 +70,19 @@ def classificar(session: Session, descricao: str, regras: list = None) -> Classi
     cat_confianca = 0.0
     atr_confianca = 0.0
 
+    # Amazon/Mercado Livre: NÃO inferir categoria automaticamente (o nome da loja
+    # não diz o que foi comprado). Atribuição segue normal. Parcelas de uma compra
+    # já categorizada herdam da irmã na importação — esse é o único caso que volta
+    # a ter categoria.
+    pular_categoria = _eh_marketplace(descricao)
+
     # === 1. MEMÓRIA — busca exact-match na descrição normalizada ===
     if desc_norm:
         memoria = session.query(Memoria).filter(
             Memoria.descricao_normalizada == desc_norm
         ).first()
         if memoria:
-            if memoria.categoria_id:
+            if memoria.categoria_id and not pular_categoria:
                 cat_id = memoria.categoria_id
                 cat_origem = "memoria"
                 cat_confianca = min(1.0, 0.7 + 0.05 * memoria.contagem)
@@ -69,7 +92,8 @@ def classificar(session: Session, descricao: str, regras: list = None) -> Classi
                 atr_confianca = min(1.0, 0.7 + 0.05 * memoria.contagem)
 
     # === 2. REGRAS — só se memória não cobriu o campo ===
-    if cat_id is None or atr_id is None:
+    # (categoria pulada de propósito p/ marketplace; atribuição ainda vale)
+    if (cat_id is None and not pular_categoria) or atr_id is None:
         if regras is None:
             regras = session.query(Regra).filter(Regra.ativa == True).all()
         # Filtra as que batem na descrição (case-insensitive)
@@ -86,7 +110,7 @@ def classificar(session: Session, descricao: str, regras: list = None) -> Classi
             key=lambda r: (-(r.prioridade or 0), -len(r.palavra_chave or ""))
         )
         for r in candidatas:
-            if cat_id is None and r.categoria_id:
+            if cat_id is None and not pular_categoria and r.categoria_id:
                 cat_id = r.categoria_id
                 cat_origem = "regra"
                 cat_confianca = 0.6
@@ -94,7 +118,7 @@ def classificar(session: Session, descricao: str, regras: list = None) -> Classi
                 atr_id = r.atribuicao_id
                 atr_origem = "regra"
                 atr_confianca = 0.6
-            if cat_id and atr_id:
+            if (cat_id or pular_categoria) and atr_id:
                 break
 
     return Classificacao(

@@ -107,12 +107,22 @@ def _parse_amazon(text, venc, infer_year):
     if cm:
         cartao_final4 = cm.group(1)
 
-    for raw in text.splitlines():
-        line = raw.rstrip()
+    linhas = text.splitlines()
+    i = 0
+    while i < len(linhas):
+        line = linhas[i].rstrip()
+        i += 1
         if not line.strip():
             continue
         m = _RE_TRANS_AMAZON.match(line)
         if not m:
+            # Compra internacional em 2 linhas (data+descrição aqui, valor abaixo)
+            md = _RE_DATA_DESC.match(line)
+            if md:
+                trans, prox_i = _tentar_internacional(linhas, i, md, cartao_final4, infer_year)
+                if trans:
+                    transacoes.append(trans)
+                    i = prox_i
             continue
         data_str, desc, valor_str, sinal_neg = m.groups()
         if sinal_neg or "PAGAMENTO RECEBIDO" in desc.upper():
@@ -159,6 +169,16 @@ _RE_TRANS_VISA = re.compile(
 _RE_PARCELA_INLINE = re.compile(r'\d{2}/\d{2}')
 _RE_CARTAO_VISA = re.compile(r'\d{4}\s+XXXX\s+XXXX\s+(\d{4})')
 
+# Compra INTERNACIONAL: vem em 2 linhas — data+descrição numa, e o valor na
+# SEGUINTE, ex.: "USD 18,30   18,30   5,3300   97,54"
+#   moeda | valor na moeda origem | valor US$ | cotação | valor R$ (último).
+_RE_VALOR_EXTERIOR = re.compile(
+    r'^\s*([A-Z]{3})\s+([\d.]+,\d{2})\s+[\d.]+,\d{2}\s+([\d.]+,\d{2,6})\s+([\d.]+,\d{2})'
+)
+# Linha só com data + descrição (sem valor R$ na própria linha) — candidata a
+# ser a 1ª linha de uma compra internacional.
+_RE_DATA_DESC = re.compile(r'^\s*(\d{2}\s*/\s*\d{2})\s+(.+)$')
+
 # Linhas que casam a regex mas não são compra.
 _PALAVRAS_IGNORAR_VISA = (
     "PAGTO", "PAGAMENTO", "TOTAL PARA", "TOTAL DA FATURA",
@@ -185,12 +205,67 @@ def _separar_miolo_visa(miolo: str):
     return desc, parcela
 
 
+def _proxima_linha_nao_vazia(linhas, i):
+    """Índice da próxima linha não-vazia a partir de i (ou len se não houver)."""
+    while i < len(linhas) and not linhas[i].strip():
+        i += 1
+    return i
+
+
+def _tentar_internacional(linhas, i, md, cartao_final4, infer_year):
+    """Compra internacional em 2 linhas (vale p/ os dois layouts do Bradesco):
+    a linha atual tem data+descrição (match `md` de _RE_DATA_DESC) e a SEGUINTE
+    não-vazia traz "USD x,xx ... cotação valor_R$". Devolve (trans|None, prox_i).
+    `prox_i` = índice a retomar (consome a linha do valor quando casa)."""
+    if any(p in md.group(2).upper() for p in _PALAVRAS_IGNORAR_VISA):
+        return None, i
+    j = _proxima_linha_nao_vazia(linhas, i)
+    if j >= len(linhas):
+        return None, i
+    mv = _RE_VALOR_EXTERIOR.match(linhas[j].rstrip())
+    if not mv:
+        return None, i
+    moeda, v_orig, cotacao, v_brl = mv.groups()
+    try:
+        valor = _parse_brl(v_brl)
+    except ValueError:
+        return None, i
+    if valor <= 0:
+        return None, i
+    dia, mes = _dia_mes(md.group(1))
+    try:
+        t_date = date(infer_year(mes), mes, dia)
+    except ValueError:
+        return None, i
+    desc, parcela = _separar_miolo_visa(md.group(2))
+    if not desc:
+        return None, i
+    trans = {
+        "data_compra": t_date,
+        "descricao": desc,
+        "valor": valor,
+        "parcela": parcela,
+        "secao": "parcelamento" if parcela else "despesa",
+        "cartao_final4": cartao_final4,
+        "moeda_original": moeda,
+    }
+    try:
+        trans["valor_original"] = _parse_brl(v_orig)
+        trans["cotacao"] = _parse_brl(cotacao)
+    except ValueError:
+        pass
+    return trans, j + 1
+
+
 def _parse_visa(text, venc, infer_year):
     transacoes = []
     cartao_final4 = None
 
-    for raw in text.splitlines():
-        line = raw.rstrip()
+    linhas = text.splitlines()
+    i = 0
+    while i < len(linhas):
+        line = linhas[i].rstrip()
+        i += 1
         if not line.strip():
             continue
 
@@ -202,41 +277,49 @@ def _parse_visa(text, venc, infer_year):
             continue
 
         m = _RE_TRANS_VISA.match(line)
-        if not m:
-            continue
-        data_str, miolo, valor_str, sinal_neg = m.groups()
+        if m:
+            data_str, miolo, valor_str, sinal_neg = m.groups()
 
-        # Pagamentos/estornos (valor com "-") e linhas de totais.
-        if sinal_neg:
-            continue
-        if any(p in miolo.upper() for p in _PALAVRAS_IGNORAR_VISA):
+            # Pagamentos/estornos (valor com "-") e linhas de totais.
+            if sinal_neg:
+                continue
+            if any(p in miolo.upper() for p in _PALAVRAS_IGNORAR_VISA):
+                continue
+
+            try:
+                valor = _parse_brl(valor_str)
+            except ValueError:
+                continue
+            if valor <= 0:
+                continue
+
+            dia, mes = _dia_mes(data_str)
+            try:
+                t_date = date(infer_year(mes), mes, dia)
+            except ValueError:
+                continue
+
+            desc, parcela = _separar_miolo_visa(miolo)
+            if not desc:
+                continue
+
+            transacoes.append({
+                "data_compra": t_date,
+                "descricao": desc,
+                "valor": valor,
+                "parcela": parcela,
+                "secao": "parcelamento" if parcela else "despesa",
+                "cartao_final4": cartao_final4,
+            })
             continue
 
-        try:
-            valor = _parse_brl(valor_str)
-        except ValueError:
-            continue
-        if valor <= 0:
-            continue
-
-        dia, mes = _dia_mes(data_str)
-        try:
-            t_date = date(infer_year(mes), mes, dia)
-        except ValueError:
-            continue
-
-        desc, parcela = _separar_miolo_visa(miolo)
-        if not desc:
-            continue
-
-        transacoes.append({
-            "data_compra": t_date,
-            "descricao": desc,
-            "valor": valor,
-            "parcela": parcela,
-            "secao": "parcelamento" if parcela else "despesa",
-            "cartao_final4": cartao_final4,
-        })
+        # --- Compra INTERNACIONAL (2 linhas) ---
+        md = _RE_DATA_DESC.match(line)
+        if md:
+            trans, prox_i = _tentar_internacional(linhas, i, md, cartao_final4, infer_year)
+            if trans:
+                transacoes.append(trans)
+                i = prox_i   # consome a linha do valor internacional
     return transacoes
 
 
