@@ -55,6 +55,39 @@ def test_saldo_composto_cobre_fluxo_posterior_a_ultima_data_cdi():
     assert saldo == pytest.approx(1000 * 1.0005 - 300, rel=1e-9)
 
 
+def test_projetar_estende_dias_uteis_nao_publicados():
+    # BCB publicou só até quinta; sexta ainda não saiu. Com projetar=True a sexta
+    # (dia útil) rende pela última taxa; sem projetar, não rende.
+    qui = date(2026, 6, 11)
+    sex = date(2026, 6, 12)
+    serie = {qui: 0.0534}                      # só até quinta
+    sem = cdi_mod.saldo_composto([(qui, 1000.0)], serie, 100, ate=sex)
+    com = cdi_mod.saldo_composto([(qui, 1000.0)], serie, 100, ate=sex, projetar=True)
+    assert sem == pytest.approx(1000 * (1 + 0.000534), rel=1e-9)      # só quinta
+    assert com == pytest.approx(1000 * (1 + 0.000534) ** 2, rel=1e-9)  # quinta + sexta
+
+
+def test_projetar_nao_inventa_rendimento_no_fim_de_semana():
+    # Sábado e domingo não são dias úteis: projeção não os faz render.
+    sex = date(2026, 6, 12)
+    seg = date(2026, 6, 15)                     # pula sáb 13 e dom 14
+    serie = {sex: 0.0534}
+    com = cdi_mod.saldo_composto([(sex, 1000.0)], serie, 100, ate=seg, projetar=True)
+    # Sexta (publicada) + segunda (projetada). Sáb/dom não rendem.
+    assert com == pytest.approx(1000 * (1 + 0.000534) ** 2, rel=1e-9)
+
+
+def test_projetar_so_apos_a_ultima_data_publicada():
+    # Projeção nunca preenche "buracos" internos (feriados no meio da série);
+    # só estende além do último dia publicado.
+    qui = date(2026, 6, 4)                      # Corpus Christi: sem CDI no meio
+    serie = {date(2026, 6, 3): 0.05, date(2026, 6, 5): 0.05}
+    s = cdi_mod.saldo_composto([(date(2026, 6, 3), 1000.0)], serie, 100,
+                               ate=date(2026, 6, 5), projetar=True)
+    # 03 e 05 rendem; 04 (buraco interno) não é projetado.
+    assert s == pytest.approx(1000 * (1.0005 ** 2), rel=1e-9)
+
+
 def test_cdi_anual_a_partir_da_serie():
     serie = {date(2026, 1, 5): 0.05}
     # (1 + 0,0005)^252 - 1

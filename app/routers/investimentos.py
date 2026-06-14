@@ -82,7 +82,7 @@ def _liquido_renda_fixa_cdi(ops: list, serie: dict, percentual: float,
     for d, v in aportes:
         if v <= 0:
             continue
-        s = cdi_mod.saldo_composto([(d, v)], serie, percentual)
+        s = cdi_mod.saldo_composto([(d, v)], serie, percentual, projetar=True)
         r = s - v
         dias = (hoje - d).days
         L = impostos.calcular_liquido(s, r, dias, tipo)
@@ -213,7 +213,7 @@ def _serializar_ativo(a: Ativo, ops: list = None, cdi_serie: dict = None,
             elif op.tipo in ("Venda", "Resgate"):
                 flows.append((op.data, -(op.valor_total or 0)))
         # Renda fixa nunca fica negativa (resgate total → ~0, sem resíduo).
-        saldo_atual = max(cdi_mod.saldo_composto(flows, cdi_serie, a.cdi_percentual), 0.0)
+        saldo_atual = max(cdi_mod.saldo_composto(flows, cdi_serie, a.cdi_percentual, projetar=True), 0.0)
         cdi_auto = True
     else:
         saldo_atual = saldo_calculado
