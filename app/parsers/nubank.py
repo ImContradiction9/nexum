@@ -40,6 +40,62 @@ def _parse_brl(s: str) -> float:
     return float(s)
 
 
+# === Ultravioleta: IOF de c\u00e2mbio reembolsado 100% =========================
+# A fatura traz a cobran\u00e7a ("IOF de \"Preply\"") e o reembolso ("IOF de volta
+# de Preply", cr\u00e9dito). Os dois se anulam \u2014 removemos o par pra n\u00e3o inflar
+# despesa nem receita. Pareamos por VALOR + nome da loja (1\u00aa palavra).
+_RE_IOF_LOJA_COBRANCA = re.compile(r'iof\s+de\s+"?([^"]+?)"?\s*$', re.IGNORECASE)
+_RE_IOF_LOJA_VOLTA = re.compile(r'iof\s+de\s+volta\s+de\s+(.+?)\s*$', re.IGNORECASE)
+
+
+def _chave_loja(nome: str) -> str:
+    """Normaliza pra compara\u00e7\u00e3o: min\u00fasculas, 1\u00aa palavra alfanum\u00e9rica."""
+    nome = re.sub(r'[^A-Za-z0-9\s]', '', (nome or "")).strip().lower()
+    return nome.split()[0] if nome else ""
+
+
+def _eh_iof_volta(t: dict) -> bool:
+    return "iof de volta" in (t["descricao"] or "").strip().lower()
+
+
+def _eh_iof_cobranca(t: dict) -> bool:
+    d = (t["descricao"] or "").strip().lower()
+    return t.get("tipo") == "Despesa" and d.startswith("iof de ") and "iof de volta" not in d
+
+
+def _anular_iof_reembolsado(transacoes: list) -> list:
+    """Remove pares cobran\u00e7a-de-IOF + reembolso-de-IOF de mesmo valor (e mesma
+    loja, quando d\u00e1 pra extrair). Sobrevivem IOFs sem par (ex.: reembolso s\u00f3 vem
+    na fatura seguinte)."""
+    voltas = [t for t in transacoes if _eh_iof_volta(t)]
+    cobrancas = [t for t in transacoes if _eh_iof_cobranca(t)]
+    if not voltas or not cobrancas:
+        return transacoes
+
+    remover = set()
+    usadas = set()
+    for v in voltas:
+        mv = _RE_IOF_LOJA_VOLTA.search(v["descricao"] or "")
+        chave_v = _chave_loja(mv.group(1)) if mv else ""
+        for c in cobrancas:
+            if id(c) in usadas:
+                continue
+            if abs((c["valor"] or 0) - (v["valor"] or 0)) > 0.01:
+                continue
+            mc = _RE_IOF_LOJA_COBRANCA.search(c["descricao"] or "")
+            chave_c = _chave_loja(mc.group(1)) if mc else ""
+            # casa se as lojas batem (ou se n\u00e3o deu pra extrair uma das duas)
+            if chave_v and chave_c and chave_v != chave_c:
+                continue
+            usadas.add(id(c))
+            remover.add(id(c))
+            remover.add(id(v))
+            break
+    if not remover:
+        return transacoes
+    return [t for t in transacoes if id(t) not in remover]
+
+
 def parse_fatura_nubank(pdf_path: str, senha: str = None) -> dict:
     text = executar_pdftotext(pdf_path, senha=senha)
 
@@ -155,6 +211,9 @@ def parse_fatura_nubank(pdf_path: str, senha: str = None) -> dict:
             "secao": "parcelamento" if parcela else "despesa",
             "cartao_final4": None,  # Nubank tem múltiplos cartões internos, não fixamos
         })
+
+    # Ultravioleta: anula o par IOF de câmbio + reembolso (se anulam, não contam).
+    transacoes = _anular_iof_reembolsado(transacoes)
 
     return {
         "banco": "Nubank",
