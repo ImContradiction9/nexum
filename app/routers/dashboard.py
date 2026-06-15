@@ -14,6 +14,35 @@ from .transacoes import _eh_abatedora
 router = APIRouter()
 
 
+def _parcela_atual(parcela: str):
+    """Número da parcela atual de uma string "NN/MM" (ex: "02/12" -> 2).
+    None se vazio ou ilegível."""
+    import re as _re
+    m = _re.search(r"(\d+)\s*/\s*(\d+)", parcela or "")
+    if not m:
+        return None
+    try:
+        return int(m.group(1))
+    except ValueError:
+        return None
+
+
+def _bucket_parcelamento(tr) -> str:
+    """Classifica a DESPESA quanto ao parcelamento:
+      - "avista": compra à vista / pontual (sem parcela).
+      - "primeira": 1ª parcela de uma compra feita agora (parcela 01/N) — ou
+        parcelada sem número legível (assume corrente).
+      - "anteriores": parcela 02/N+ — compromisso de uma compra de ANTES.
+    """
+    p = (tr.parcela or "").strip()
+    if not p:
+        return "avista"
+    atual = _parcela_atual(p)
+    if atual is None:
+        return "primeira"
+    return "primeira" if atual <= 1 else "anteriores"
+
+
 def _ultimos_meses(mes_ref: str, n: int) -> list:
     """Lista os últimos `n` meses 'MM/YYYY' terminando em `mes_ref` (inclusive),
     em ordem cronológica (mais antigo → mais recente)."""
@@ -355,12 +384,15 @@ def dashboard(
     despesas = 0.0
     desp_essencial = 0.0
     desp_discricionario = 0.0
+    # Despesa por parcelamento: à vista vs parcelada (1ª parcela vs de antes).
+    parc = {"avista": 0.0, "primeira": 0.0, "anteriores": 0.0}
 
     for tr in todas_trans:
         valor = tr.valor or 0.0
         if _eh_abatedora(tr):
             # Reduz despesa total e despesa da categoria correspondente
             despesas -= valor
+            parc[_bucket_parcelamento(tr)] -= valor
             # Decide qual bucket essencial/discricionário diminuir (segue padrão da categoria)
             if tr.essencial_override is not None:
                 eh_essencial = bool(tr.essencial_override)
@@ -377,6 +409,7 @@ def dashboard(
         else:
             # Despesa normal
             despesas += valor
+            parc[_bucket_parcelamento(tr)] += valor
             if tr.essencial_override is not None:
                 eh_essencial = bool(tr.essencial_override)
             elif tr.categoria and tr.categoria.essencial is not None:
@@ -767,6 +800,13 @@ def dashboard(
         # Essencial vs Discricionário do mês atual
         "despesas_essenciais": desp_essencial,
         "despesas_discricionarias": desp_discricionario,
+        # Despesa por parcelamento (à vista × parcelada; "anteriores" = parcelas
+        # de compras feitas antes, 02/N+). Soma dos três = despesas.
+        "por_parcelamento": {
+            "a_vista": round(max(parc["avista"], 0.0), 2),
+            "parcelada_primeira": round(max(parc["primeira"], 0.0), 2),
+            "parcelada_anteriores": round(max(parc["anteriores"], 0.0), 2),
+        },
         # Comparativo com mês anterior
         "mes_anterior": mes_anterior,
         "tem_mes_anterior": tem_mes_anterior,

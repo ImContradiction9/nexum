@@ -8,7 +8,7 @@ from datetime import datetime, date
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import and_, case, func, not_
+from sqlalchemy import Integer, and_, case, cast, func, not_
 from sqlalchemy.orm import Session, joinedload
 
 from ..deps import get_db
@@ -33,6 +33,8 @@ def listar_transacoes(
     categoria_id: Optional[int] = None,
     atribuicao_id: Optional[int] = None,
     tipo: Optional[str] = None,        # "Receita" (entradas) | "Despesa" (saídas)
+    # "avista" | "parcelada" | "primeira" (1ª deste mês) | "anteriores" (de antes)
+    parcelamento: Optional[str] = None,
     busca: Optional[str] = None,
     nao_categorizado: bool = False,
     nao_atribuido: bool = False,
@@ -73,6 +75,24 @@ def listar_transacoes(
         q = q.filter(Transacao.atribuicao_id == atribuicao_id)
     if tipo in ("Receita", "Despesa"):
         q = q.filter(Transacao.tipo == tipo)
+    if parcelamento in ("avista", "parcelada", "primeira", "anteriores"):
+        # Mesma classificação do gráfico do dashboard:
+        #   avista     = sem parcela
+        #   parcelada  = qualquer parcela "NN/MM"
+        #   anteriores = parcela atual >= 2 (compromisso de compra de ANTES)
+        #   primeira   = parcelada e não "anteriores" (1ª parcela / sem nº legível)
+        tem_parc = and_(Transacao.parcela.isnot(None), Transacao.parcela != "")
+        pos = func.instr(Transacao.parcela, "/")
+        num = cast(func.substr(Transacao.parcela, 1, pos - 1), Integer)
+        anteriores = and_(tem_parc, pos > 0, num >= 2)
+        if parcelamento == "avista":
+            q = q.filter(not_(tem_parc))
+        elif parcelamento == "parcelada":
+            q = q.filter(tem_parc)
+        elif parcelamento == "anteriores":
+            q = q.filter(anteriores)
+        else:  # "primeira"
+            q = q.filter(and_(tem_parc, not_(anteriores)))
     if busca:
         q = q.filter(Transacao.descricao.ilike(f"%{busca}%"))
 

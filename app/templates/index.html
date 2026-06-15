@@ -679,6 +679,14 @@
         <option value="Receita">Só entradas</option>
         <option value="Despesa">Só saídas</option>
       </select>
+      <select x-model="filtros.parcelamento" @change="carregarTransacoes()" class="bg-zinc-900 border border-zinc-800 pl-3 pr-8 py-2 text-sm rounded"
+              title="À vista vs parceladas. 'Parcelas de antes' = parcela 02/N+ (compras feitas anteriormente)">
+        <option value="">À vista e parceladas</option>
+        <option value="avista">Só à vista</option>
+        <option value="parcelada">Só parceladas</option>
+        <option value="primeira">Parceladas (1ª deste mês)</option>
+        <option value="anteriores">Parcelas de antes</option>
+      </select>
       <select x-model="filtros.tipo_conta" @change="carregarTransacoes()" class="bg-zinc-900 border border-zinc-800 pl-3 pr-8 py-2 text-sm rounded">
         <option value="">Todos os tipos</option>
         <option value="Conta Corrente">Conta Corrente</option>

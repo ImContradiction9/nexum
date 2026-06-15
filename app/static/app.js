@@ -25,6 +25,7 @@ function financeiro() {
       por_atribuicao: [],
       por_conta: [],
       por_forma: [],
+      por_parcelamento: { a_vista: 0, parcelada_primeira: 0, parcelada_anteriores: 0 },
     },
 
     previsao: { meses: [] },
@@ -65,6 +66,7 @@ function financeiro() {
       categoria_id: '',
       atribuicao_id: '',
       tipo: '',           // '' = tudo | 'Receita' = entradas | 'Despesa' = saídas
+      parcelamento: '',   // '' | 'avista' | 'parcelada' | 'primeira' | 'anteriores'
       nao_categorizado: false,
       nao_atribuido: false,
       incluir_transferencias: false,
@@ -93,6 +95,7 @@ function financeiro() {
       { id: 'atribuicao',       nome: 'Despesas por atribuição' },
       { id: 'forma',            nome: 'Despesas por forma de pagamento' },
       { id: 'banco',            nome: 'Despesas por banco' },
+      { id: 'parcelamento',     nome: 'À vista × parceladas' },
       { id: 'origem',           nome: 'Recebimentos por origem' },
       { id: 'receita_despesa',  nome: 'Receitas × despesas' },
     ],
@@ -722,6 +725,26 @@ function financeiro() {
           labels: ['Receitas', 'Despesas'],
           valores: [rec, des],
           cores: ['#10b981', '#ef4444'],
+        };
+      }
+
+      if (t === 'parcelamento') {
+        const p = d.por_parcelamento || {};
+        const avista = p.a_vista || 0;
+        const prim = p.parcelada_primeira || 0;
+        const ant = p.parcelada_anteriores || 0;
+        if (avista + prim + ant <= 0) return null;
+        // À vista (azul) · 1ª parcela deste mês (âmbar) · parcelas de antes (vermelho)
+        const segs = [
+          { nome: 'À vista / pontual', total: avista, cor: '#3b82f6' },
+          { nome: 'Parceladas (1ª deste mês)', total: prim, cor: '#f59e0b' },
+          { nome: 'Parcelas de antes', total: ant, cor: '#ef4444' },
+        ].filter(s => s.total > 0);
+        return {
+          chart: 'doughnut',
+          labels: segs.map(s => s.nome),
+          valores: segs.map(s => s.total),
+          cores: segs.map(s => s.cor),
         };
       }
 
