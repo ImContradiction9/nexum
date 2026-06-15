@@ -8,7 +8,7 @@ from datetime import datetime, date
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func
+from sqlalchemy import and_, case, func, not_
 from sqlalchemy.orm import Session, joinedload
 
 from ..deps import get_db
@@ -32,6 +32,7 @@ def listar_transacoes(
     tipo_conta: Optional[str] = None,
     categoria_id: Optional[int] = None,
     atribuicao_id: Optional[int] = None,
+    tipo: Optional[str] = None,        # "Receita" (entradas) | "Despesa" (saídas)
     busca: Optional[str] = None,
     nao_categorizado: bool = False,
     nao_atribuido: bool = False,
@@ -70,6 +71,8 @@ def listar_transacoes(
         q = q.filter(Transacao.categoria_id == categoria_id)
     if atribuicao_id:
         q = q.filter(Transacao.atribuicao_id == atribuicao_id)
+    if tipo in ("Receita", "Despesa"):
+        q = q.filter(Transacao.tipo == tipo)
     if busca:
         q = q.filter(Transacao.descricao.ilike(f"%{busca}%"))
 
@@ -109,19 +112,35 @@ def listar_transacoes(
     total = q.count()
     items = q.order_by(Transacao.data.desc(), Transacao.id.desc()).offset(skip).limit(limit).all()
 
-    # Total monetário (sobre o filtro completo, não só a página atual).
-    # Considera abatedoras: receita+cat-despesa abate da despesa.
-    todas_filtradas = q.options(joinedload(Transacao.categoria)).all()
-    total_receitas = 0.0
-    total_despesas = 0.0
-    for tr in todas_filtradas:
-        valor = tr.valor or 0.0
-        if _eh_abatedora(tr):
-            total_despesas -= valor
-        elif tr.tipo == "Receita":
-            total_receitas += valor
-        else:
-            total_despesas += valor
+    # Total monetário (sobre o filtro completo, não só a página atual), agregado
+    # no SQL — antes materializávamos TODAS as transações do filtro só pra somar.
+    # Replica _eh_abatedora: Receita com categoria de tipo "Despesa" (≠ Cashback)
+    # NÃO conta como receita; abate da despesa. coalesce/booleanos evitam NULLs.
+    valor = func.coalesce(Transacao.valor, 0.0)
+    abatedora = and_(
+        Transacao.tipo == "Receita",
+        Transacao.categoria_id.isnot(None),
+        func.coalesce(Categoria.tipo, "") == "Despesa",
+        func.coalesce(Categoria.nome, "") != "Cashback",
+    )
+    rec_expr = func.coalesce(func.sum(
+        case((and_(Transacao.tipo == "Receita", not_(abatedora)), valor), else_=0.0)
+    ), 0.0)
+    desp_expr = func.coalesce(func.sum(case(
+        (abatedora, -valor),
+        (Transacao.tipo != "Receita", valor),
+        else_=0.0,
+    )), 0.0)
+    ids_filtradas = q.with_entities(Transacao.id).subquery()
+    total_receitas, total_despesas = (
+        db.query(rec_expr, desp_expr)
+        .select_from(Transacao)
+        .outerjoin(Categoria, Transacao.categoria_id == Categoria.id)
+        .filter(Transacao.id.in_(db.query(ids_filtradas.c.id)))
+        .one()
+    )
+    total_receitas = float(total_receitas or 0.0)
+    total_despesas = float(total_despesas or 0.0)
 
     # Contagem de suspeitas pendentes (sempre, pra mostrar banner)
     n_suspeitas = db.query(func.count(Transacao.id)).filter(

@@ -20,10 +20,13 @@ from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 
+from . import cache_mem
 from .database import Configuracao
 
 _CACHE_KEY = "cotacoes_cache"
 _SYNC_KEY = "cotacoes_sync_em"
+_CACHE_MEM = "cotacoes:cache"          # chave do cache em memória do dict parseado
+_CACHE_MEM_TTL = 600                    # backstop; invalida na escrita (sincronizar)
 _INTERVALO_HORAS = 3
 _YAHOO = "https://query1.finance.yahoo.com/v8/finance/chart/{sym}?interval=1d&range=1d"
 _UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
@@ -75,13 +78,23 @@ def _buscar(sym: str, tentativas: int = 2):
     return None, None
 
 
-def carregar_cache(db: Session) -> dict:
-    """{TICKER: {preco, moeda, sym, em}} do cache."""
+def _ler_cache_raw(db: Session) -> dict:
+    """Parse direto do JSON no banco (sem memoizar). Use quando for MUTAR o dict."""
     raw = _cfg_get(db, _CACHE_KEY)
     try:
         return json.loads(raw) if raw else {}
     except (ValueError, TypeError):
         return {}
+
+
+def carregar_cache(db: Session) -> dict:
+    """{TICKER: {preco, moeda, sym, em}} do cache.
+
+    Memoizado em memória (invalida quando `sincronizar` grava): a aba de
+    investimentos pede o cache em vários endpoints por abertura. O dict é
+    SOMENTE-LEITURA pros chamadores (`cotacao_de` só lê); quem grava usa
+    `_ler_cache_raw`."""
+    return cache_mem.get_or_set(_CACHE_MEM, _CACHE_MEM_TTL, lambda: _ler_cache_raw(db))
 
 
 def _precisa(db: Session) -> bool:
@@ -103,7 +116,7 @@ def sincronizar(db: Session, ativos, forcar: bool = False) -> dict:
     if not forcar and not _precisa(db):
         return {"ok": True, "atualizado": False, "n": 0, "erro": None}
 
-    cache = carregar_cache(db)
+    cache = _ler_cache_raw(db)   # vamos MUTAR: lê do banco, não do cache em memória
     erro = None
     n = 0
     vistos = set()
@@ -124,12 +137,18 @@ def sincronizar(db: Session, ativos, forcar: bool = False) -> dict:
             }
             n += 1
 
-    _cfg_set(db, _CACHE_KEY, json.dumps(cache))
-    _cfg_set(db, _SYNC_KEY, datetime.now().isoformat())
+    # no_autoflush: flush só no commit (evita IntegrityError de corrida na query
+    # do _cfg_set, antes do try). Em conflito, rollback limpo.
     try:
+        with db.no_autoflush:
+            _cfg_set(db, _CACHE_KEY, json.dumps(cache))
+            _cfg_set(db, _SYNC_KEY, datetime.now().isoformat())
         db.commit()
     except Exception:
         db.rollback()
+    else:
+        if n > 0:
+            cache_mem.invalidar(_CACHE_MEM)   # cotações mudaram: força recarga
     # Sucesso parcial conta como ok (ex: 1 ticker inválido entre vários).
     return {"ok": (n > 0 or erro is None), "atualizado": n > 0, "n": n, "erro": erro}
 

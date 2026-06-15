@@ -74,16 +74,16 @@
           <button @click="view='dashboard'"
                   :class="view==='dashboard' ? 'text-amber-500' : 'text-zinc-500 hover:text-zinc-200'"
                   class="px-3 py-1 transition">Dashboard</button>
-          <button @click="view='transacoes'; carregarTransacoes()"
+          <button @click="abrirAba('transacoes')"
                   :class="view==='transacoes' ? 'text-amber-500' : 'text-zinc-500 hover:text-zinc-200'"
                   class="px-3 py-1 transition">Transações</button>
           <button @click="view='extrato'; carregarContasExtrato()"
                   :class="view==='extrato' ? 'text-amber-500' : 'text-zinc-500 hover:text-zinc-200'"
                   class="px-3 py-1 transition">Extrato</button>
-          <button @click="view='investimentos'; carregarInvestimentos()"
+          <button @click="abrirAba('investimentos')"
                   :class="view==='investimentos' ? 'text-amber-500' : 'text-zinc-500 hover:text-zinc-200'"
                   class="px-3 py-1 transition">Investimentos</button>
-          <button @click="view='metas'; carregarMetas()"
+          <button @click="abrirAba('metas')"
                   :class="view==='metas' ? 'text-amber-500' : 'text-zinc-500 hover:text-zinc-200'"
                   class="px-3 py-1 transition">Metas</button>
           <button @click="view='orcamento'; carregarOrcamentos()"
@@ -673,6 +673,11 @@
       <select x-model="filtros.banco_id" @change="carregarTransacoes()" class="bg-zinc-900 border border-zinc-800 pl-3 pr-8 py-2 text-sm rounded">
         <option value="">Todos os bancos</option>
         <template x-for="b in bancos"><option :value="b.id" x-text="b.nome"></option></template>
+      </select>
+      <select x-model="filtros.tipo" @change="carregarTransacoes()" class="bg-zinc-900 border border-zinc-800 pl-3 pr-8 py-2 text-sm rounded">
+        <option value="">Entradas e saídas</option>
+        <option value="Receita">Só entradas</option>
+        <option value="Despesa">Só saídas</option>
       </select>
       <select x-model="filtros.tipo_conta" @change="carregarTransacoes()" class="bg-zinc-900 border border-zinc-800 pl-3 pr-8 py-2 text-sm rounded">
         <option value="">Todos os tipos</option>

@@ -100,23 +100,25 @@ def sincronizar(db: Session, forcar: bool = False) -> dict:
 
     atualizou = False
     erro = None
-    for moeda, serie in _SERIES.items():
-        try:
-            taxa, data_ref = _baixar_ultimo(serie)
-        except Exception as e:  # offline / API fora do ar
-            erro = str(e)
-            continue
-        if taxa:
-            _cfg_set(db, f"cambio_{moeda.lower()}", taxa)
-            _cfg_set(db, f"cambio_{moeda.lower()}_data", data_ref or "")
-            atualizou = True
-
-    _cfg_set(db, _CONFIG_SYNC, datetime.now().isoformat())
-    # Tolerante a corrida: a página de investimentos dispara /resumo e
-    # /cambio/status em paralelo (sessões separadas); os dois podem tentar
-    # inserir 'cambio_usd' ao mesmo tempo (UNIQUE em configuracoes). Em conflito,
-    # rollback em vez de envenenar a sessão (o outro request já gravou).
+    # Tolerante a corrida: a página de investimentos dispara /resumo, /ativos,
+    # /alocacao, /evolucao e /cambio/status em paralelo (sessões separadas); no
+    # 1º sync os vários podem tentar inserir 'cambio_usd' ao mesmo tempo (UNIQUE
+    # em configuracoes). `no_autoflush` deixa o flush só pro commit (a query de
+    # _cfg_set não dispara IntegrityError antes do try); em conflito, rollback
+    # limpo (o request vencedor já gravou).
     try:
+        with db.no_autoflush:
+            for moeda, serie in _SERIES.items():
+                try:
+                    taxa, data_ref = _baixar_ultimo(serie)
+                except Exception as e:  # offline / API fora do ar
+                    erro = str(e)
+                    continue
+                if taxa:
+                    _cfg_set(db, f"cambio_{moeda.lower()}", taxa)
+                    _cfg_set(db, f"cambio_{moeda.lower()}_data", data_ref or "")
+                    atualizou = True
+            _cfg_set(db, _CONFIG_SYNC, datetime.now().isoformat())
         db.commit()
     except Exception:
         db.rollback()

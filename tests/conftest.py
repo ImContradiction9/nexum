@@ -16,9 +16,19 @@ os.environ["FINANCEIRO_DB"] = os.path.join(tempfile.gettempdir(), "nexum_test_im
 
 import pytest
 
+from app import cache_mem
 from app import cdi as cdi_mod
 from app import cambio as cambio_mod
 from app.database import init_db, get_session
+
+
+@pytest.fixture(autouse=True)
+def _limpa_cache_mem():
+    """Cada teste usa um banco próprio; zera o cache de processo (série CDI,
+    cotações) antes e depois pra não vazar valores entre testes."""
+    cache_mem.invalidar()
+    yield
+    cache_mem.invalidar()
 
 
 @pytest.fixture(autouse=True)

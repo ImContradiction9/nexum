@@ -2,6 +2,8 @@ function financeiro() {
   return {
     // Navegação
     view: 'dashboard',
+    _abaCarregadaEm: {},   // view -> timestamp da última carga (cache de aba)
+    _ABA_FRESCA_MS: 30000, // re-abrir aba carregada há menos que isso não rebusca
 
     // Catálogos
     contas: [],
@@ -62,6 +64,7 @@ function financeiro() {
       tipo_conta: '',
       categoria_id: '',
       atribuicao_id: '',
+      tipo: '',           // '' = tudo | 'Receita' = entradas | 'Despesa' = saídas
       nao_categorizado: false,
       nao_atribuido: false,
       incluir_transferencias: false,
@@ -863,7 +866,25 @@ function financeiro() {
       }
     },
 
+    // Troca de aba com cache: mostra na hora os dados já carregados e só rebusca
+    // se passaram mais de _ABA_FRESCA_MS desde a última carga. Ações de edição
+    // chamam o carregar* diretamente (sem passar por aqui), então sempre atualizam.
+    abrirAba(v, ...args) {
+      this.view = v;
+      const loaders = {
+        transacoes: 'carregarTransacoes',
+        investimentos: 'carregarInvestimentos',
+        metas: 'carregarMetas',
+      };
+      const fn = loaders[v];
+      if (!fn) return;
+      const ultima = this._abaCarregadaEm[v] || 0;
+      if (ultima && (Date.now() - ultima) < this._ABA_FRESCA_MS) return; // fresca: já está na tela
+      this[fn](...args);
+    },
+
     async carregarTransacoes() {
+      this._abaCarregadaEm.transacoes = Date.now();
       const params = new URLSearchParams();
       Object.entries(this.filtros).forEach(([k, v]) => {
         if (v !== '' && v !== false && v !== null) params.set(k, v);
@@ -2604,6 +2625,7 @@ function financeiro() {
 
     async carregarInvestimentos() {
       const t = Date.now();
+      this._abaCarregadaEm.investimentos = t;
       try {
         const [ativos, resumo, tipos, cdi, cambio] = await Promise.all([
           fetch(`/api/investimentos/ativos?_=${t}`).then(r => r.json()),
@@ -2879,6 +2901,7 @@ function financeiro() {
     async carregarMetas() {
       try {
         const t = Date.now();
+        this._abaCarregadaEm.metas = t;
         const [d, ativos] = await Promise.all([
           fetch(`/api/metas?_=${t}`).then(r => r.json()),
           fetch(`/api/investimentos/ativos?_=${t}`).then(r => r.json()).catch(() => []),

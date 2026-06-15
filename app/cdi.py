@@ -20,7 +20,11 @@ from datetime import date, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
+from . import cache_mem
 from .database import CDIDiario, Configuracao
+
+_CACHE_SERIE = "cdi:serie"            # chave do cache em memória da série diária
+_CACHE_TTL = 600                      # backstop; a invalidação na escrita é o que garante frescor
 
 _BCB_URL = (
     "https://api.bcb.gov.br/dados/serie/bcdata.sgs.12/dados"
@@ -126,19 +130,29 @@ def sincronizar(db: Session, desde: date | None = None, forcar: bool = False) ->
 
     existentes = {r[0] for r in db.query(CDIDiario.data).all()}
     n = 0
-    for d, taxa in novos:
-        if d in existentes:
-            continue
-        db.add(CDIDiario(data=d, taxa=taxa))
-        existentes.add(d)
-        n += 1
-    _marcar_sincronizado(db)
-    # Tolerante a corrida: se outro request concorrente já inseriu os mesmos
-    # dias (UNIQUE em cdi_diario), faz rollback em vez de deixar a sessão
-    # "envenenada" (PendingRollbackError quebrava a página de investimentos).
-    if not _commit_tolerante(db):
+    # Tolerante a corrida: a aba de investimentos dispara vários endpoints em
+    # paralelo (sessões separadas), e quando há dia novo a publicar todos tentam
+    # inserir os MESMOS dias (UNIQUE em cdi_diario). `no_autoflush` garante que o
+    # flush só acontece no commit (e não na query de _marcar_sincronizado, que
+    # antes disparava o IntegrityError ANTES do try e envenenava a sessão →
+    # PendingRollbackError quebrava a página). Em conflito, rollback limpo: o
+    # request concorrente vencedor já gravou os dados.
+    try:
+        with db.no_autoflush:
+            for d, taxa in novos:
+                if d in existentes:
+                    continue
+                db.add(CDIDiario(data=d, taxa=taxa))
+                existentes.add(d)
+                n += 1
+            _marcar_sincronizado(db)
+        db.commit()
+    except Exception:
+        db.rollback()
         return {"ok": True, "atualizado": False, "ultima_data": _iso(_ultima_data_cache(db)),
                 "dias_baixados": 0, "erro": None}
+    if n > 0:
+        cache_mem.invalidar(_CACHE_SERIE)   # a série mudou: força recarga no próximo uso
     return {"ok": True, "atualizado": n > 0, "ultima_data": _iso(_ultima_data_cache(db)),
             "dias_baixados": n, "erro": None}
 
@@ -159,8 +173,16 @@ def _commit_tolerante(db: Session) -> bool:
 # Leitura / cálculo
 # --------------------------------------------------------------------------
 def carregar_serie(db: Session) -> dict:
-    """Carrega o cache CDI como {date: taxa_pct_dia}."""
-    return {r.data: r.taxa for r in db.query(CDIDiario).all()}
+    """Carrega o cache CDI como {date: taxa_pct_dia}.
+
+    Memoizado em memória (TTL curto + invalidação quando `sincronizar` insere
+    dias): a mesma série é pedida por 4 endpoints a cada abertura da aba de
+    investimentos, e materializar ~750 linhas toda vez era desperdício. O dict
+    retornado é tratado como SOMENTE-LEITURA por todos os chamadores."""
+    return cache_mem.get_or_set(
+        _CACHE_SERIE, _CACHE_TTL,
+        lambda: {r.data: r.taxa for r in db.query(CDIDiario).all()},
+    )
 
 
 def saldo_composto(flows: list, serie: dict, percentual: float,
