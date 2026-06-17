@@ -2703,6 +2703,39 @@ function financeiro() {
       const fmtMes = (m) => { const [y, mm] = m.split('-'); return mm + '/' + y.slice(2); };
       const labels = serie.map(p => fmtMes(p.mes));
 
+      if (this.evolucaoModo === 'rendimento') {
+        // Barras de rendimento (rentab_brl) por classe — verde lucro, vermelho prejuízo.
+        const tipos = (this.resumoInvest && this.resumoInvest.por_tipo) || [];
+        const arr = tipos
+          .map(t => ({ tipo: t.tipo, rentab: t.rentab_brl || 0 }))
+          .filter(t => Math.abs(t.rentab) > 0.005)
+          .sort((a, b) => b.rentab - a.rentab);
+        this._chartPatrimonio = new Chart(el, {
+          type: 'bar',
+          data: {
+            labels: arr.map(t => t.tipo),
+            datasets: [{
+              label: 'Rendimento',
+              data: arr.map(t => t.rentab),
+              backgroundColor: arr.map(t => t.rentab >= 0 ? '#34d399' : '#ef4444'),
+              borderRadius: 6, maxBarThickness: 80,
+            }],
+          },
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: { callbacks: { label: (c) => this.brl(c.parsed.y || 0) } },
+            },
+            scales: {
+              x: { ticks: { color: '#71717a', maxRotation: 0, autoSkip: true }, grid: { color: 'rgba(255,255,255,.04)' } },
+              y: { ticks: { color: '#71717a', callback: (v) => this.brl(v) }, grid: { color: 'rgba(255,255,255,.04)' } },
+            },
+          },
+        });
+        return;
+      }
+
       if (this.evolucaoModo === 'tipo' && d.tipos && d.tipos.length) {
         // Uma LINHA independente por classe (não empilhado) — cada tipo mostra a
         // própria trajetória, sem "subir junto" por estar em cima de outro.
