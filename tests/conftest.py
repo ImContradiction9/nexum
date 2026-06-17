@@ -19,6 +19,7 @@ import pytest
 from app import cache_mem
 from app import cdi as cdi_mod
 from app import cambio as cambio_mod
+from app import cotacoes as cotacoes_mod
 from app.database import init_db, get_session
 
 
@@ -41,6 +42,12 @@ def _sem_rede_cdi(monkeypatch):
     monkeypatch.setattr(
         cambio_mod, "sincronizar",
         lambda *a, **k: {"ok": True, "atualizado": False, "erro": None},
+    )
+    # Mocka só o fetch de rede (Yahoo) do histórico — a lógica de
+    # sincronizar_historico/cache roda de verdade, sem tocar a internet.
+    monkeypatch.setattr(
+        cotacoes_mod, "_buscar_historico_mensal",
+        lambda sym, desde, **k: ({}, None),
     )
 
 

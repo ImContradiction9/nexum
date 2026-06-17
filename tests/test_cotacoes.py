@@ -44,3 +44,25 @@ def test_renda_fixa_ignora_cotacao(db):
     cot = {"X": {"preco": 5.0, "moeda": "BRL", "sym": "X.SA", "em": "x"}}
     ser = _serializar_ativo(a, [], {}, cotacoes=cot)
     assert ser["cotacao_auto"] is False         # renda fixa não usa cotação de mercado
+
+
+def test_sincronizar_historico_grava_e_carrega(db, monkeypatch):
+    # Mocka o fetch do Yahoo: ETF "IVV" (USD) + câmbio USDBRL=X, sem rede.
+    dados = {
+        "IVV": ({"2026-04": 100.0, "2026-05": 110.0}, "USD"),
+        "USDBRL=X": ({"2026-04": 5.0, "2026-05": 5.2}, "BRL"),
+    }
+    monkeypatch.setattr(cotacoes, "_buscar_historico_mensal",
+                        lambda sym, desde, **k: dados[sym])
+    res = cotacoes.sincronizar_historico(
+        db, [("IVV", "USD")], {"USD"}, date(2026, 4, 1), forcar=True)
+    assert res["ok"] and res["n"] == 4
+
+    serie = cotacoes.historico_mensal_serie(db)
+    assert serie["IVV"]["2026-05"] == 110.0
+    assert serie["USDBRL=X"]["2026-04"] == 5.0
+
+    # Re-sincronizar atualiza (upsert), não duplica.
+    dados["IVV"] = ({"2026-05": 115.0}, "USD")
+    cotacoes.sincronizar_historico(db, [("IVV", "USD")], set(), date(2026, 5, 1), forcar=True)
+    assert cotacoes.historico_mensal_serie(db)["IVV"]["2026-05"] == 115.0

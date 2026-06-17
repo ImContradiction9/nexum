@@ -365,6 +365,21 @@ class CDIDiario(Base):
     taxa = Column(Float, nullable=False)   # % ao dia (ex: 0.053400)
 
 
+class CotacaoMensal(Base):
+    """Fechamento MENSAL histórico de um símbolo (Yahoo), em cache local.
+
+    Guarda o preço de fechamento de cada mês por símbolo — usado para
+    reconstruir o valor real de renda variável (ETFs/ações) no fim de cada
+    mês passado, mesmo sem foto diária do patrimônio. Símbolos de câmbio
+    (ex: "USDBRL=X") também ficam aqui, pra converter a posição em BRL.
+    `mes` é "YYYY-MM"; `fechamento` está em `moeda`."""
+    __tablename__ = "cotacao_mensal"
+    sym = Column(String, primary_key=True)
+    mes = Column(String, primary_key=True)          # "YYYY-MM"
+    fechamento = Column(Float, nullable=False)
+    moeda = Column(String)                           # moeda do fechamento
+
+
 class PatrimonioSnapshot(Base):
     """Foto diária do patrimônio investido (em BRL), pra montar o gráfico de
     evolução ao longo do tempo. Gravado (upsert por dia) ao abrir a carteira."""

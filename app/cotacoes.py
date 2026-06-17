@@ -27,6 +27,10 @@ _CACHE_KEY = "cotacoes_cache"
 _SYNC_KEY = "cotacoes_sync_em"
 _CACHE_MEM = "cotacoes:cache"          # chave do cache em memória do dict parseado
 _CACHE_MEM_TTL = 600                    # backstop; invalida na escrita (sincronizar)
+_YAHOO_HIST = ("https://query1.finance.yahoo.com/v8/finance/chart/{sym}"
+               "?period1={p1}&period2={p2}&interval=1mo")
+_HIST_SYNC_KEY = "cotacoes_hist_sync_em"
+_HIST_INTERVALO_HORAS = 24             # histórico mensal muda devagar; 1x/dia basta
 _INTERVALO_HORAS = 3
 _YAHOO = "https://query1.finance.yahoo.com/v8/finance/chart/{sym}?interval=1d&range=1d"
 _UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
@@ -85,6 +89,108 @@ def _ler_cache_raw(db: Session) -> dict:
         return json.loads(raw) if raw else {}
     except (ValueError, TypeError):
         return {}
+
+
+def _fx_sym(moeda: str) -> str:
+    """Símbolo Yahoo do câmbio moeda→BRL (ex: USD -> 'USDBRL=X')."""
+    return f"{(moeda or '').upper()}BRL=X"
+
+
+def _buscar_historico_mensal(sym: str, desde, tentativas: int = 2):
+    """Fechamentos MENSAIS de `sym` de `desde` (date) até hoje.
+    Retorna ({'YYYY-MM': fechamento}, moeda). Lança em erro de rede."""
+    p1 = int(datetime(desde.year, desde.month, 1).timestamp())
+    p2 = int(datetime.now().timestamp())
+    url = _YAHOO_HIST.format(sym=sym, p1=p1, p2=p2)
+    req = urllib.request.Request(url, headers={"User-Agent": _UA})
+    ctx = ssl.create_default_context()
+    erro = None
+    for _ in range(max(1, tentativas)):
+        try:
+            with urllib.request.urlopen(req, timeout=20, context=ctx) as r:
+                d = json.loads(r.read().decode("utf-8"))
+            res = d["chart"]["result"][0]
+            ts = res.get("timestamp") or []
+            closes = (res.get("indicators", {}).get("quote") or [{}])[0].get("close") or []
+            moeda = res.get("meta", {}).get("currency")
+            out = {}
+            for t, c in zip(ts, closes):
+                if c is None:
+                    continue
+                dt = datetime.fromtimestamp(t)
+                out[f"{dt.year:04d}-{dt.month:02d}"] = float(c)
+            return out, moeda
+        except Exception as e:
+            erro = e
+    if erro:
+        raise erro
+    return {}, None
+
+
+def _precisa_hist(db: Session) -> bool:
+    em = _cfg_get(db, _HIST_SYNC_KEY)
+    if not em:
+        return True
+    try:
+        return (datetime.now() - datetime.fromisoformat(em)) > timedelta(hours=_HIST_INTERVALO_HORAS)
+    except ValueError:
+        return True
+
+
+def sincronizar_historico(db: Session, tickers, fx_moedas, desde, forcar: bool = False) -> dict:
+    """Baixa o fechamento MENSAL (Yahoo) de cada ativo de renda variável e do
+    câmbio das moedas estrangeiras, gravando em CotacaoMensal (cache local).
+
+    tickers: lista de (ticker, moeda). fx_moedas: conjunto de moedas != BRL.
+    desde: data (date) da 1ª operação — limite inferior do histórico.
+    Lazy (1x/dia) e tolerante a offline."""
+    from .database import CotacaoMensal
+    if not forcar and not _precisa_hist(db):
+        return {"ok": True, "atualizado": False, "n": 0, "erro": None}
+    if not desde:
+        return {"ok": True, "atualizado": False, "n": 0, "erro": None}
+
+    alvos = {}  # sym -> moeda esperada (fallback)
+    for ticker, moeda in tickers:
+        sym = simbolo_yahoo(ticker, moeda)
+        if sym:
+            alvos[sym] = (moeda or "BRL")
+    for m in fx_moedas:
+        if m and m.upper() != "BRL":
+            alvos[_fx_sym(m)] = "BRL"
+
+    erro = None
+    n = 0
+    for sym, moeda_fb in alvos.items():
+        try:
+            hist, moeda = _buscar_historico_mensal(sym, desde)
+        except Exception as e:  # offline / símbolo inválido
+            erro = str(e)
+            continue
+        for mes, close in hist.items():
+            row = db.query(CotacaoMensal).filter_by(sym=sym, mes=mes).first()
+            if row:
+                row.fechamento = close
+                row.moeda = moeda or moeda_fb
+            else:
+                db.add(CotacaoMensal(sym=sym, mes=mes, fechamento=close, moeda=moeda or moeda_fb))
+            n += 1
+    _cfg_set(db, _HIST_SYNC_KEY, datetime.now().isoformat())
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        return {"ok": True, "atualizado": False, "n": 0, "erro": "conflito_concorrente"}
+    return {"ok": erro is None, "atualizado": n > 0, "n": n, "erro": erro}
+
+
+def historico_mensal_serie(db: Session) -> dict:
+    """{sym: {'YYYY-MM': fechamento}} de tudo em cache (inclui símbolos de câmbio)."""
+    from .database import CotacaoMensal
+    out = {}
+    for r in db.query(CotacaoMensal).all():
+        out.setdefault(r.sym, {})[r.mes] = r.fechamento
+    return out
 
 
 def carregar_cache(db: Session) -> dict:

@@ -2679,7 +2679,8 @@ function financeiro() {
         this.evolucaoTemDados = serie.length > 0;
         if (!serie.length || typeof Chart === 'undefined') return;
         // Se não há split por tipo, força modo total.
-        if (this.evolucaoModo === 'tipo' && !(d.tipos && d.tipos.length)) this.evolucaoModo = 'total';
+        if ((this.evolucaoModo === 'tipo' || this.evolucaoModo === 'rendimento')
+            && !(d.tipos && d.tipos.length)) this.evolucaoModo = 'total';
         await this.$nextTick();
         this._desenharEvolucao();
       } catch (e) { /* sem internet (Chart.js CDN) ou sem dados: silencioso */ }
@@ -2703,29 +2704,60 @@ function financeiro() {
       const fmtMes = (m) => { const [y, mm] = m.split('-'); return mm + '/' + y.slice(2); };
       const labels = serie.map(p => fmtMes(p.mes));
 
-      if (this.evolucaoModo === 'rendimento') {
-        // Barras de rendimento (rentab_brl) por classe — verde lucro, vermelho prejuízo.
-        const tipos = (this.resumoInvest && this.resumoInvest.por_tipo) || [];
-        const arr = tipos
-          .map(t => ({ tipo: t.tipo, rentab: t.rentab_brl || 0 }))
-          .filter(t => Math.abs(t.rentab) > 0.005)
-          .sort((a, b) => b.rentab - a.rentab);
+      if (this.evolucaoModo === 'aporte_rend') {
+        // Valores DO MÊS: aporte do mês (barras) × rendimento do mês (linha).
+        const aporte = serie.map(p => p.aporte_mes);
+        const rend = serie.map(p => p.rendimento_mes);
         this._chartPatrimonio = new Chart(el, {
           type: 'bar',
           data: {
-            labels: arr.map(t => t.tipo),
-            datasets: [{
-              label: 'Rendimento',
-              data: arr.map(t => t.rentab),
-              backgroundColor: arr.map(t => t.rentab >= 0 ? '#34d399' : '#ef4444'),
-              borderRadius: 6, maxBarThickness: 80,
-            }],
+            labels,
+            datasets: [
+              { type: 'bar', label: 'Aporte do mês', data: aporte,
+                backgroundColor: '#60a5fa', borderRadius: 4, maxBarThickness: 36, order: 2 },
+              { type: 'line', label: 'Rendimento do mês', data: rend,
+                borderColor: '#34d399', backgroundColor: '#34d399',
+                tension: .25, pointRadius: 2, borderWidth: 2, spanGaps: true, order: 1 },
+            ],
           },
           options: {
             responsive: true, maintainAspectRatio: false,
+            interaction: { intersect: false, mode: 'index' },
             plugins: {
-              legend: { display: false },
-              tooltip: { callbacks: { label: (c) => this.brl(c.parsed.y || 0) } },
+              legend: { labels: { color: '#a1a1aa', boxWidth: 12 } },
+              tooltip: { callbacks: { label: (c) => c.dataset.label + ': ' + (c.parsed.y == null ? '—' : this.brl(c.parsed.y)) } },
+            },
+            scales: {
+              x: { ticks: { color: '#71717a', maxRotation: 0, autoSkip: true }, grid: { color: 'rgba(255,255,255,.04)' } },
+              y: { ticks: { color: '#71717a', callback: (v) => this.brl(v) }, grid: { color: 'rgba(255,255,255,.04)' } },
+            },
+          },
+        });
+        return;
+      }
+
+      if (this.evolucaoModo === 'rendimento' && d.tipos && d.tipos.length) {
+        // Linha do tempo do rendimento (ganho/perda em R$) por classe.
+        const paleta = ['#34d399', '#60a5fa', '#f59e0b', '#a855f7', '#ec4899',
+                        '#06b6d4', '#84cc16', '#f97316', '#eab308', '#14b8a6', '#ef4444'];
+        const srt = d.series_rendimento_tipo || {};
+        const datasets = d.tipos.map((t, i) => {
+          const cor = paleta[i % paleta.length];
+          return {
+            label: t, data: (srt[t] || []),
+            borderColor: cor, backgroundColor: cor,
+            fill: false, tension: .25, pointRadius: 0, borderWidth: 2, spanGaps: true,
+          };
+        });
+        this._chartPatrimonio = new Chart(el, {
+          type: 'line',
+          data: { labels, datasets },
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            interaction: { intersect: false, mode: 'index' },
+            plugins: {
+              legend: { labels: { color: '#a1a1aa', boxWidth: 12 } },
+              tooltip: { callbacks: { label: (c) => c.dataset.label + ': ' + this.brl(c.parsed.y || 0) } },
             },
             scales: {
               x: { ticks: { color: '#71717a', maxRotation: 0, autoSkip: true }, grid: { color: 'rgba(255,255,255,.04)' } },

@@ -885,6 +885,27 @@ def evolucao_patrimonio(db: Session = Depends(get_db)):
     serie_cdi = _cdi_serie(db)
     hoje = date.today()
 
+    # Histórico mensal de renda variável (fechamento Yahoo) — reconstrói o valor
+    # REAL de ETFs/ações no fim de cada mês passado, em vez de usar o custo.
+    # Lazy (1x/dia) e tolerante a offline.
+    desde_hist = min((op.data for op in ops if op.data), default=None)
+    try:
+        tickers = [(a.ticker, a.moeda) for a in ativos_patr if a.ticker]
+        fx_moedas = {a.moeda for a in ativos_patr if a.moeda and a.moeda.upper() != "BRL"}
+        if tickers and desde_hist:
+            cotacoes_mod.sincronizar_historico(db, tickers, fx_moedas, desde_hist)
+    except Exception:
+        pass
+    hist_serie = cotacoes_mod.historico_mensal_serie(db)
+    _fx_hist_cache: dict = {}
+
+    def _fx_atual_hist(moeda):
+        if not moeda or moeda.upper() == "BRL":
+            return 1.0
+        if moeda not in _fx_hist_cache:
+            _fx_hist_cache[moeda] = cambio_mod.taxa_atual(db, moeda) or 1.0
+        return _fx_hist_cache[moeda]
+
     def _ultimo_dia_mes(m):
         y, mo = map(int, m.split("-"))
         prox = date(y + 1, 1, 1) if mo == 12 else date(y, mo + 1, 1)
@@ -893,22 +914,49 @@ def evolucao_patrimonio(db: Session = Depends(get_db)):
     def _valor_ativo_em(a, ops_ate, fim):
         custo = 0.0
         flows = []
+        qtd = 0.0
         for op in ops_ate:
             v = (op.valor_total or 0) * (op.cotacao_cambio or 1)
             if op.tipo in ("Compra", "Aporte"):
-                custo += v; flows.append((op.data, v))
+                custo += v; flows.append((op.data, v)); qtd += (op.quantidade or 0)
             elif op.tipo in ("Venda", "Resgate"):
-                custo -= v; flows.append((op.data, -v))
+                custo -= v; flows.append((op.data, -v)); qtd -= (op.quantidade or 0)
         if a.cdi_percentual and serie_cdi and flows:
             return max(cdi_mod.saldo_composto(flows, serie_cdi, a.cdi_percentual, ate=fim), 0.0)
+        # Renda variável com ticker: valor de mercado = qtd × fechamento do mês ×
+        # câmbio do mês (histórico). Sem fechamento p/ aquele mês, cai no custo.
+        if a.ticker and qtd > 0.0:
+            sym = cotacoes_mod.simbolo_yahoo(a.ticker, a.moeda)
+            mes = f"{fim.year:04d}-{fim.month:02d}"
+            close = (hist_serie.get(sym) or {}).get(mes)
+            if close:
+                if (a.moeda or "BRL").upper() == "BRL":
+                    fx = 1.0
+                else:
+                    fx = ((hist_serie.get(f"{a.moeda.upper()}BRL=X") or {}).get(mes)
+                          or _fx_atual_hist(a.moeda))
+                return max(qtd * close * fx, 0.0)
         return max(custo, 0.0)
+
+    def _custo_em(ops_ate) -> float:
+        """Custo (investido) acumulado até a data: aportes - resgates, nunca < 0."""
+        c = 0.0
+        for op in ops_ate:
+            v = (op.valor_total or 0) * (op.cotacao_cambio or 1)
+            if op.tipo in ("Compra", "Aporte"):
+                c += v
+            elif op.tipo in ("Venda", "Resgate"):
+                c -= v
+        return max(c, 0.0)
 
     patr_recon = {}
     patr_tipo = {}   # mes -> {tipo: valor reconstruído}
+    inv_tipo = {}    # mes -> {tipo: investido (custo)} — p/ rendimento por tipo
     for m in meses:
         fim = _ultimo_dia_mes(m)
         total = 0.0
         port = {}
+        inv_port = {}
         for a in ativos_patr:
             ops_ate = [op for op in ops_por_ativo.get(a.id, [])
                        if op.data and op.data <= fim]
@@ -917,8 +965,10 @@ def evolucao_patrimonio(db: Session = Depends(get_db)):
             v = _valor_ativo_em(a, ops_ate, fim)
             total += v
             port[a.tipo] = port.get(a.tipo, 0.0) + v
+            inv_port[a.tipo] = inv_port.get(a.tipo, 0.0) + _custo_em(ops_ate)
         patr_recon[m] = total
         patr_tipo[m] = port
+        inv_tipo[m] = inv_port
 
     # Snapshots reais vencem a reconstrução (valor de mercado de verdade).
     patr_recon.update(patr_snap_mes)
@@ -937,10 +987,12 @@ def evolucao_patrimonio(db: Session = Depends(get_db)):
         return _taxas_evo[moeda]
     cot_evo = cotacoes_mod.carregar_cache(db)
     live_tipo = {}
+    live_rentab_tipo = {}   # rendimento ao vivo por tipo (= rentab dos cards)
     for a in ativos_patr:
         ser = _serializar_ativo(a, ops_por_ativo.get(a.id, []), serie_cdi,
                                 _taxa_evo(a.moeda), cot_evo)
         live_tipo[a.tipo] = live_tipo.get(a.tipo, 0.0) + max(ser["saldo_atual_brl"], 0.0)
+        live_rentab_tipo[a.tipo] = live_rentab_tipo.get(a.tipo, 0.0) + ser["rentab_brl"]
     if live_tipo and meses:
         ult = meses[-1]
         patr_tipo[ult] = live_tipo
@@ -959,18 +1011,42 @@ def evolucao_patrimonio(db: Session = Depends(get_db)):
     series_tipo = {t: [round(patr_tipo.get(m, {}).get(t, 0.0), 2) for m in meses]
                    for t in tipos}
 
+    # Rendimento por tipo mês a mês = patrimônio − investido (custo). No mês atual
+    # usa o rendimento ao vivo (= rentab dos cards/resumo). Renda variável fica ~0
+    # no passado (sem preço histórico) e salta pro valor de mercado no mês atual;
+    # renda fixa CDI mostra os juros acumulando.
+    rend_tipo = {}
+    for m in meses:
+        pt = patr_tipo.get(m, {})
+        it = inv_tipo.get(m, {})
+        rend_tipo[m] = {t: pt.get(t, 0.0) - it.get(t, 0.0) for t in (set(pt) | set(it))}
+    if live_rentab_tipo and meses:
+        rend_tipo[meses[-1]] = live_rentab_tipo
+    series_rendimento_tipo = {t: [round(rend_tipo.get(m, {}).get(t, 0.0), 2) for m in meses]
+                              for t in tipos}
+
     serie = []
     acc = 0.0
+    rend_acum_prev = 0.0
     for m in meses:
         acc += delta_mes.get(m, 0.0)
+        patr_m = patr_recon.get(m)
+        # Rendimento ACUMULADO até o mês = patrimônio − investido (custo). Sem
+        # patrimônio reconstruível, mantém o acumulado anterior (não inventa).
+        rend_acum = (patr_m - acc) if patr_m is not None else rend_acum_prev
         serie.append({
             "mes": m,
             "investido": round(max(acc, 0.0), 2),
-            "patrimonio": round(patr_recon[m], 2) if m in patr_recon else None,
+            "patrimonio": round(patr_m, 2) if patr_m is not None else None,
+            # Valores DO MÊS (fluxo), não acumulados:
+            "aporte_mes": round(delta_mes.get(m, 0.0), 2),          # quanto entrou no mês
+            "rendimento_mes": round(rend_acum - rend_acum_prev, 2),  # ganho gerado no mês
         })
+        rend_acum_prev = rend_acum
     return {
         "serie": serie,
         "meses": meses,
         "tipos": tipos,
         "series_tipo": series_tipo,
+        "series_rendimento_tipo": series_rendimento_tipo,
     }
