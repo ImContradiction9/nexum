@@ -59,6 +59,56 @@ def _prazo_medio_dias(ops: list) -> int:
     return int(round(soma_ponderada / total)) if total > 0 else 0
 
 
+def _imposto_resgate_flows(ops: list, serie: dict, percentual: float, tipo: str) -> list:
+    """Fluxos negativos extras = IOF/IR retido em cada RESGATE de renda fixa
+    tributável, sobre o rendimento resgatado (FIFO por tranche).
+
+    No resgate antecipado o IOF é altíssimo (até 96% nos primeiros dias) e esse
+    imposto também SAI da caixinha (não só do que você recebe). Modelar isso
+    aproxima o bruto do valor real do banco quando há resgate de aportes recentes.
+    Devolve [] se não há resgates — ativos sem resgate ficam idênticos."""
+    if not serie or not percentual:
+        return []
+    resgates = sorted(
+        [(op.data, op.valor_total or 0) for op in ops
+         if op.tipo in ("Venda", "Resgate") and op.data and (op.valor_total or 0) > 0],
+        key=lambda x: x[0])
+    if not resgates:
+        return []
+    # Tranches FIFO: [data, principal_restante]. Valor numa data = principal
+    # composto da sua data até a VÉSPERA do resgate (o resgate sai antes do fator).
+    tranches = sorted(
+        [[op.data, (op.valor_total or 0) + (op.taxas or 0)] for op in ops
+         if op.tipo in ("Compra", "Aporte") and op.data and (op.valor_total or 0) > 0],
+        key=lambda x: x[0])
+    um_dia = timedelta(days=1)
+    flows = []
+    for r_data, r_valor in resgates:
+        falta = r_valor
+        imposto = 0.0
+        for tr in tranches:
+            if falta <= 1e-9:
+                break
+            if tr[1] <= 1e-9 or tr[0] > r_data:
+                continue
+            valor = cdi_mod.saldo_composto([(tr[0], tr[1])], serie, percentual,
+                                           ate=r_data - um_dia, projetar=True)
+            if valor <= 1e-9:
+                continue
+            tirar = min(valor, falta)
+            frac = tirar / valor
+            principal_tirado = tr[1] * frac
+            rend_tirado = tirar - principal_tirado
+            dias = (r_data - tr[0]).days
+            L = impostos.calcular_liquido(tirar, rend_tirado, dias, tipo)
+            imposto += L["iof_valor"] + L["ir_valor"]
+            tr[1] -= principal_tirado
+            falta -= tirar
+        if imposto > 0:
+            flows.append((r_data, -round(imposto, 2)))
+    return flows
+
+
 def _liquido_renda_fixa_cdi(ops: list, serie: dict, percentual: float,
                             tipo: str, saldo_atual: float) -> dict:
     """Líquido (IR + IOF) de renda fixa CDI-auto, calculado POR APORTE (tranche).
@@ -212,6 +262,8 @@ def _serializar_ativo(a: Ativo, ops: list = None, cdi_serie: dict = None,
                 flows.append((op.data, (op.valor_total or 0) + (op.taxas or 0)))
             elif op.tipo in ("Venda", "Resgate"):
                 flows.append((op.data, -(op.valor_total or 0)))
+        # Imposto (IOF/IR) retido em resgates antecipados também sai da caixinha.
+        flows += _imposto_resgate_flows(ops, cdi_serie, a.cdi_percentual, a.tipo)
         # Renda fixa nunca fica negativa (resgate total → ~0, sem resíduo).
         saldo_atual = max(cdi_mod.saldo_composto(flows, cdi_serie, a.cdi_percentual, projetar=True), 0.0)
         cdi_auto = True
@@ -922,6 +974,7 @@ def evolucao_patrimonio(db: Session = Depends(get_db)):
             elif op.tipo in ("Venda", "Resgate"):
                 custo -= v; flows.append((op.data, -v)); qtd -= (op.quantidade or 0)
         if a.cdi_percentual and serie_cdi and flows:
+            flows = flows + _imposto_resgate_flows(ops_ate, serie_cdi, a.cdi_percentual, a.tipo)
             return max(cdi_mod.saldo_composto(flows, serie_cdi, a.cdi_percentual, ate=fim), 0.0)
         # Renda variável com ticker: valor de mercado = qtd × fechamento do mês ×
         # câmbio do mês (histórico). Sem fechamento p/ aquele mês, cai no custo.

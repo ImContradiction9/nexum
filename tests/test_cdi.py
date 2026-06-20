@@ -88,6 +88,18 @@ def test_projetar_so_apos_a_ultima_data_publicada():
     assert s == pytest.approx(1000 * (1.0005 ** 2), rel=1e-9)
 
 
+def test_projetar_nao_inclui_hoje():
+    # O dia de HOJE nunca é projetado (o banco só credita o rendimento do dia
+    # depois dele fechar) — projetar hoje deixaria o Nexum adiantado.
+    from datetime import timedelta
+    hoje = date.today()
+    ontem = hoje - timedelta(days=1)
+    serie = {ontem: 0.05}                        # publicado só até ontem
+    s = cdi_mod.saldo_composto([(ontem, 1000.0)], serie, 100, ate=hoje, projetar=True)
+    # Rende só ontem (publicado); hoje não entra (independe do dia da semana).
+    assert s == pytest.approx(1000 * 1.0005, rel=1e-9)
+
+
 def test_cdi_anual_a_partir_da_serie():
     serie = {date(2026, 1, 5): 0.05}
     # (1 + 0,0005)^252 - 1

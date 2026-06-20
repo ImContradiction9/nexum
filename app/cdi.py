@@ -196,11 +196,13 @@ def saldo_composto(flows: list, serie: dict, percentual: float,
     serie: {date: taxa_pct_dia} (cache CDI).
     percentual: % do CDI (100 = 100%, 120 = 120%).
     ate: data final do cálculo (default = última data com CDI em cache, ou hoje).
-    projetar: se True, os dias ÚTEIS (seg–sex) posteriores ao último dia com CDI
-        publicado e até `ate` rendem pela ÚLTIMA taxa conhecida. O BCB publica a
-        série com ~1 dia útil de atraso; sem isso o bruto fica atrás do banco
-        (que já creditou o rendimento). É estimativa: ajusta sozinho quando o
-        BCB confirma. Feriados projetados são raros e se autocorrigem.
+    projetar: se True, os dias ÚTEIS (seg–sex) JÁ FECHADOS (anteriores a hoje)
+        que o BCB ainda não publicou rendem pela ÚLTIMA taxa conhecida. O BCB
+        publica a série com ~1 dia útil de atraso; sem isso o bruto fica atrás do
+        banco, que já creditou o rendimento dos dias fechados. NÃO projeta o dia
+        de HOJE: o banco só credita o rendimento do dia depois dele fechar, então
+        projetar hoje deixaria o Nexum adiantado. É estimativa: ajusta sozinho
+        quando o BCB confirma. Feriados projetados são raros e se autocorrigem.
     """
     if not flows:
         return 0.0
@@ -216,10 +218,11 @@ def saldo_composto(flows: list, serie: dict, percentual: float,
     if ate < inicio:
         ate = inicio
 
-    # Projeção: última diária conhecida, aplicada aos dias úteis ainda não
-    # publicados (após fim_serie, até `ate`).
+    # Projeção: última diária conhecida, aplicada aos dias úteis JÁ FECHADOS
+    # (após o último publicado e ANTES de hoje) que o BCB ainda não publicou.
     ultima_pub = max(serie.keys()) if serie else None
     taxa_proj = serie[ultima_pub] if (projetar and ultima_pub) else None
+    hoje = date.today()
 
     # Mapa data -> soma dos fluxos do dia (pode haver mais de um no mesmo dia).
     por_dia: dict = {}
@@ -233,7 +236,8 @@ def saldo_composto(flows: list, serie: dict, percentual: float,
         if dia in por_dia:
             saldo += por_dia[dia]
         taxa = serie.get(dia)
-        if taxa is None and taxa_proj and dia > ultima_pub and dia.weekday() < 5:
+        if (taxa is None and taxa_proj and dia > ultima_pub
+                and dia < hoje and dia.weekday() < 5):
             taxa = taxa_proj
         if taxa:
             saldo *= 1 + (taxa / 100.0) * p

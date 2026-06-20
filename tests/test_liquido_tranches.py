@@ -8,7 +8,7 @@ from datetime import date, timedelta
 from types import SimpleNamespace
 
 from app import cdi as cdi_mod, impostos
-from app.routers.investimentos import _liquido_renda_fixa_cdi
+from app.routers.investimentos import _liquido_renda_fixa_cdi, _imposto_resgate_flows
 
 
 def _op(tipo, d, valor):
@@ -110,3 +110,24 @@ def test_resgate_escala_imposto_proporcional():
     )
     assert r["iof_valor"] < sem_resgate["iof_valor"]
     assert r["saldo_liquido"] <= saldo
+
+
+def test_imposto_resgate_flows_desconta_iof_do_resgate_antecipado():
+    # Resgate antecipado (3 dias) → IOF altíssimo; o imposto vira um fluxo
+    # negativo no dia do resgate (sai da caixinha). Sem resgate → nenhum fluxo.
+    hoje = date.today()
+    serie = _serie_constante(hoje, 60)
+    ap = _op("Aporte", hoje - timedelta(days=3), 1000.0)
+    assert _imposto_resgate_flows([ap], serie, 100, "RDB") == []
+
+    rg = _op("Resgate", hoje, 500.0)
+    flows = _imposto_resgate_flows([ap, rg], serie, 100, "RDB")
+    assert len(flows) == 1
+    d, v = flows[0]
+    assert d == hoje and v < 0                      # imposto sai no dia do resgate
+    # Bate com o cálculo direto da tranche resgatada (FIFO).
+    valor = cdi_mod.saldo_composto([(ap.data, 1000.0)], serie, 100, ate=hoje - timedelta(days=1))
+    frac = 500.0 / valor
+    rend = 500.0 - 1000.0 * frac
+    L = impostos.calcular_liquido(500.0, rend, 3, "RDB")
+    assert abs(-v - round(L["iof_valor"] + L["ir_valor"], 2)) < 0.01
