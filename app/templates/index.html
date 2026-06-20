@@ -289,7 +289,6 @@
       </button>
       <div class="flex items-baseline justify-between mb-4">
         <h3 class="text-sm tracking-widest text-zinc-400">Saldo geral · caixa do período</h3>
-        <span class="text-xs text-zinc-600">Variação real do dinheiro nas contas</span>
       </div>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div>
@@ -505,7 +504,6 @@
       <div class="flex items-baseline justify-between mb-4">
         <h2 class="font-serif text-xl text-zinc-300">Próximos meses</h2>
         <div class="flex items-baseline gap-4">
-          <span class="text-xs text-zinc-500">parcelas já comprometidas</span>
           <button @click="ocultarBloco('previsao')"
                   class="text-[10px] tracking-wider text-zinc-700 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition">
             ocultar
@@ -957,9 +955,6 @@
   <main x-show="view==='extrato'" class="max-w-[1600px] mx-auto px-8 py-8">
     <div class="flex items-baseline justify-between mb-6">
       <h2 class="font-serif text-2xl">Extrato bancário</h2>
-      <div class="text-xs text-zinc-500">
-        Visão por conta corrente — todas as movimentações com saldo acumulado
-      </div>
     </div>
 
     <!-- Sem contas -->
@@ -1116,12 +1111,8 @@
 
   <!-- ============ INVESTIMENTOS ============ -->
   <main x-show="view==='investimentos'" class="max-w-[1600px] mx-auto px-8 py-8">
-    <div class="flex items-baseline justify-between mb-2">
+    <div class="mb-2">
       <h2 class="font-serif text-2xl">Carteira de investimentos</h2>
-      <button @click="abrirFormAtivo()"
-              class="text-sm text-amber-500 hover:text-amber-400 tracking-wider">
-        + Novo ativo
-      </button>
     </div>
 
     <!-- Indicadores: CDI + câmbio (dólar/euro), com uma atualização só -->
@@ -1268,10 +1259,6 @@
         Rendimento (ganho/perda) por classe — retorno total em R$ de cada tipo: posição atual menos o investido,
         já com câmbio e proventos. <span class="text-emerald-400">Verde</span> = lucro, <span class="text-red-400">vermelho</span> = prejuízo.
       </div>
-      <div x-show="evolucaoModo==='aporte_rend'" class="text-[11px] text-zinc-600 mt-2">
-        <span class="text-blue-400">Aporte do mês</span> = quanto você investiu naquele mês; <span class="text-emerald-400">Rendimento do mês</span> = ganho gerado no mês.
-        Renda fixa é exata em todo mês; ETF só tem histórico a partir de jun/2026 (quando começaram as fotos diárias do patrimônio).
-      </div>
     </div>
 
     <!-- Alocação por classe + rebalanceamento -->
@@ -1305,13 +1292,19 @@
             </div>
           </template>
         </div>
-        <div class="flex items-center justify-between mt-3">
-          <span class="text-[11px] text-zinc-600"
-                x-text="(alocacao.aporte_total_brl||0) > 0.5 ? ('Aporte de ' + brl(alocacao.aporte_total_brl) + ' pra chegar no alvo (só compra)') : 'Já está no alvo — nada a aportar'"></span>
+        <div class="flex items-center justify-end mt-3">
           <button @click="salvarAlocacaoAlvo()"
                   class="bg-amber-500 hover:bg-amber-400 text-zinc-950 px-3 py-1.5 text-xs font-medium rounded">Salvar alvos</button>
         </div>
       </div>
+    </div>
+
+    <!-- Botão de novo ativo: logo acima do formulário de cadastro -->
+    <div x-show="!formAtivoAberto" class="mb-6">
+      <button @click="abrirFormAtivo()"
+              class="text-sm text-amber-500 hover:text-amber-400 tracking-wider border border-amber-900/50 rounded px-4 py-2">
+        + Novo ativo
+      </button>
     </div>
 
     <!-- Form novo/editar ativo -->
