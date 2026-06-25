@@ -273,7 +273,8 @@ function financeiro() {
     operacoesPorAtivo: {},  // { ativoId: [op, op, ...] }
     resumoInvest: { n_ativos: 0 },
     evolucaoTemDados: false,
-    evolucaoModo: (localStorage.getItem('nexum_evolucao_modo') || 'total'),  // 'total' | 'tipo'
+    evolucaoModo: (localStorage.getItem('nexum_evolucao_modo') || 'total'),  // 'total' | 'tipo' | 'rendimento' | 'aporte_rend'
+    rendimentoModo: (localStorage.getItem('nexum_rendimento_modo') || 'tipo'),  // 'tipo' | 'ativo' (sub-modo do Rendimento)
     _evoData: null,        // cache da última resposta de /evolucao
     _chartPatrimonio: null,
     alocacao: { linhas: [], total_brl: 0, tem_alvo: false, soma_alvo: 0 },
@@ -2692,6 +2693,12 @@ function financeiro() {
       this._desenharEvolucao();
     },
 
+    trocarRendimentoModo(modo) {
+      this.rendimentoModo = modo;   // 'tipo' | 'ativo'
+      try { localStorage.setItem('nexum_rendimento_modo', modo); } catch (e) {}
+      this._desenharEvolucao();
+    },
+
     _desenharEvolucao() {
       const d = this._evoData;
       if (!d || typeof Chart === 'undefined') return;
@@ -2736,15 +2743,18 @@ function financeiro() {
         return;
       }
 
-      if (this.evolucaoModo === 'rendimento' && d.tipos && d.tipos.length) {
-        // Linha do tempo do rendimento (ganho/perda em R$) por classe.
+      if (this.evolucaoModo === 'rendimento') {
+        // Linha do tempo do rendimento (ganho/perda em R$), por tipo ou por ativo.
         const paleta = ['#34d399', '#60a5fa', '#f59e0b', '#a855f7', '#ec4899',
                         '#06b6d4', '#84cc16', '#f97316', '#eab308', '#14b8a6', '#ef4444'];
-        const srt = d.series_rendimento_tipo || {};
-        const datasets = d.tipos.map((t, i) => {
+        const porAtivo = this.rendimentoModo === 'ativo';
+        const chaves = (porAtivo ? d.ativos_nomes : d.tipos) || [];
+        const series = (porAtivo ? d.series_rendimento_ativo : d.series_rendimento_tipo) || {};
+        if (!chaves.length) return;
+        const datasets = chaves.map((t, i) => {
           const cor = paleta[i % paleta.length];
           return {
-            label: t, data: (srt[t] || []),
+            label: t, data: (series[t] || []),
             borderColor: cor, backgroundColor: cor,
             fill: false, tension: .25, pointRadius: 0, borderWidth: 2, spanGaps: true,
           };

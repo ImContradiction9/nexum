@@ -1005,23 +1005,32 @@ def evolucao_patrimonio(db: Session = Depends(get_db)):
     patr_recon = {}
     patr_tipo = {}   # mes -> {tipo: valor reconstruído}
     inv_tipo = {}    # mes -> {tipo: investido (custo)} — p/ rendimento por tipo
+    patr_ativo = {}  # mes -> {nome_ativo: valor}   — p/ rendimento por ativo
+    inv_ativo = {}   # mes -> {nome_ativo: investido}
     for m in meses:
         fim = _ultimo_dia_mes(m)
         total = 0.0
         port = {}
         inv_port = {}
+        port_a = {}
+        inv_port_a = {}
         for a in ativos_patr:
             ops_ate = [op for op in ops_por_ativo.get(a.id, [])
                        if op.data and op.data <= fim]
             if not ops_ate:
                 continue
             v = _valor_ativo_em(a, ops_ate, fim)
+            custo = _custo_em(ops_ate)
             total += v
             port[a.tipo] = port.get(a.tipo, 0.0) + v
-            inv_port[a.tipo] = inv_port.get(a.tipo, 0.0) + _custo_em(ops_ate)
+            inv_port[a.tipo] = inv_port.get(a.tipo, 0.0) + custo
+            port_a[a.nome] = port_a.get(a.nome, 0.0) + v
+            inv_port_a[a.nome] = inv_port_a.get(a.nome, 0.0) + custo
         patr_recon[m] = total
         patr_tipo[m] = port
         inv_tipo[m] = inv_port
+        patr_ativo[m] = port_a
+        inv_ativo[m] = inv_port_a
 
     # Snapshots reais vencem a reconstrução (valor de mercado de verdade).
     patr_recon.update(patr_snap_mes)
@@ -1041,11 +1050,13 @@ def evolucao_patrimonio(db: Session = Depends(get_db)):
     cot_evo = cotacoes_mod.carregar_cache(db)
     live_tipo = {}
     live_rentab_tipo = {}   # rendimento ao vivo por tipo (= rentab dos cards)
+    live_rentab_ativo = {}  # rendimento ao vivo por ativo
     for a in ativos_patr:
         ser = _serializar_ativo(a, ops_por_ativo.get(a.id, []), serie_cdi,
                                 _taxa_evo(a.moeda), cot_evo)
         live_tipo[a.tipo] = live_tipo.get(a.tipo, 0.0) + max(ser["saldo_atual_brl"], 0.0)
         live_rentab_tipo[a.tipo] = live_rentab_tipo.get(a.tipo, 0.0) + ser["rentab_brl"]
+        live_rentab_ativo[a.nome] = live_rentab_ativo.get(a.nome, 0.0) + ser["rentab_brl"]
     if live_tipo and meses:
         ult = meses[-1]
         patr_tipo[ult] = live_tipo
@@ -1078,6 +1089,21 @@ def evolucao_patrimonio(db: Session = Depends(get_db)):
     series_rendimento_tipo = {t: [round(rend_tipo.get(m, {}).get(t, 0.0), 2) for m in meses]
                               for t in tipos}
 
+    # Mesma coisa POR ATIVO (sub-modo "por ativo" do gráfico de rendimento).
+    ativos_nomes = sorted(
+        {n for port in patr_ativo.values() for n in port},
+        key=lambda n: -patr_ativo.get(meses[-1], {}).get(n, 0.0),
+    )
+    rend_ativo = {}
+    for m in meses:
+        pa = patr_ativo.get(m, {})
+        ia = inv_ativo.get(m, {})
+        rend_ativo[m] = {n: pa.get(n, 0.0) - ia.get(n, 0.0) for n in (set(pa) | set(ia))}
+    if live_rentab_ativo and meses:
+        rend_ativo[meses[-1]] = live_rentab_ativo
+    series_rendimento_ativo = {n: [round(rend_ativo.get(m, {}).get(n, 0.0), 2) for m in meses]
+                               for n in ativos_nomes}
+
     serie = []
     acc = 0.0
     rend_acum_prev = 0.0
@@ -1102,4 +1128,6 @@ def evolucao_patrimonio(db: Session = Depends(get_db)):
         "tipos": tipos,
         "series_tipo": series_tipo,
         "series_rendimento_tipo": series_rendimento_tipo,
+        "ativos_nomes": ativos_nomes,
+        "series_rendimento_ativo": series_rendimento_ativo,
     }
