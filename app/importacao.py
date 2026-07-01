@@ -412,10 +412,12 @@ def _eh_transferencia_interconta(descricao: str, nomes_familia: list = None) -> 
     Detecta transferência entre contas próprias / da família (não conta nos totais).
 
     Critérios (TODOS precisam bater):
-      1. A descrição contém o nome de um titular (você ou família) — exige pelo
-         menos 2 partes do nome em comum, pra evitar falso positivo com lojas que
-         compartilham só o primeiro nome (ex: "Micael Calçados Ltda" não bate com
-         "Micael Italo da Silva").
+      1. A descrição contém o nome de um titular (você ou família): exige o
+         PRIMEIRO nome (o discriminador — irmãos compartilham sobrenome) MAIS pelo
+         menos 2 partes do nome no total. Assim "Adelaine Salvador Passos" (uma
+         terceira) NÃO bate com a titular "Andreina Salvador Passos" só por
+         dividir os dois sobrenomes; e lojas que compartilham só o 1º nome
+         ("Micael Calçados Ltda") também não batem.
       2. A contraparte parece pessoa física (não tem CNPJ na descrição).
 
     Transferência via instituição/PJ NÃO é auto-marcada (o usuário pode marcar
@@ -427,9 +429,16 @@ def _eh_transferencia_interconta(descricao: str, nomes_familia: list = None) -> 
     for nome in (nomes_familia or []):
         if not nome:
             continue
-        partes = [p.lower() for p in nome.split() if len(p) >= 4]
-        # Precisa bater pelo menos 2 partes do nome
-        if sum(1 for p in partes if p in desc_lower) >= 2:
+        tokens = [p.lower() for p in nome.split()]
+        if not tokens:
+            continue
+        primeiro = tokens[0]                                  # 1º nome (discriminador)
+        partes = [p for p in tokens if len(p) >= 4]           # partes "fortes" (sobrenomes etc.)
+        # Exige: 1º nome presente (≥4 chars, pra não casar substring curto) E pelo
+        # menos 2 partes do nome na descrição. Irmãos têm o mesmo sobrenome, então
+        # sem o 1º nome bater não é a mesma pessoa.
+        if len(primeiro) >= 4 and primeiro in desc_lower \
+                and sum(1 for p in partes if p in desc_lower) >= 2:
             nome_bate = True
             break
 

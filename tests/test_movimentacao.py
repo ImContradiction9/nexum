@@ -55,6 +55,19 @@ def test_transferencia_so_com_nome_titular_e_pf():
     assert not _eh_transferencia_interconta("Pix - Joao da Silva - ***.999.888-**", nomes)
 
 
+def test_irma_com_mesmos_sobrenomes_nao_e_transferencia():
+    # Caso real: titular "Andreina Salvador Passos"; a terceira "Adelaine Salvador
+    # Passos" compartilha os DOIS sobrenomes, mas é outra pessoa (1º nome difere).
+    nomes = ["Andreina Salvador Passos", "Andreina"]
+    assert not _eh_transferencia_interconta(
+        "Transferência Recebida - Adelaine Salvador Passos - •••.890.735-•• - NU PAGAMENTOS", nomes
+    )
+    # A própria titular (1º nome bate) → é transferência
+    assert _eh_transferencia_interconta(
+        "Transferência Recebida - Andreina Salvador Passos - •••.111.222-••", nomes
+    )
+
+
 # ----------------------------------------------------------------------------
 # Fixtures locais
 # ----------------------------------------------------------------------------
@@ -156,3 +169,35 @@ def test_dashboard_ignora_movimentacao_nos_totais(db):
     # Só a despesa normal entra; a fatura (5000) fica fora.
     assert out["despesas"] == 200.0
     assert out["totais_especiais"].get("Pagamento de Fatura") == 5000.0
+
+
+# ----------------------------------------------------------------------------
+# Categorizar como categoria real desfaz a flag de movimentação
+# ----------------------------------------------------------------------------
+
+def test_categorizar_limpa_movimentacao(db):
+    cat = Categoria(nome="Outros recebimentos", tipo="Receita")
+    db.add(cat); db.commit(); db.refresh(cat)
+    conta = _conta(db)
+    t = _trans(db, conta, descricao="Transferência Recebida - Fulano", valor=25.0,
+               tipo="Receita", movimentacao="transferencia", categoria_origem="movimentacao")
+    # PATCH: dar categoria real → limpa a movimentação (passa a contar nos totais)
+    atualizar_transacao(t.id, {"categoria_id": cat.id}, db=db)
+    db.refresh(t)
+    assert t.movimentacao is None
+    assert t.categoria_id == cat.id
+    padrao = listar_transacoes(mes=None, data_inicio=None, data_fim=None, db=db)
+    assert t.id in [i["id"] for i in padrao["items"]]   # não mais escondida
+
+
+def test_migracao_conserta_movimentacao_com_categoria(db):
+    from app.database import _limpar_movimentacao_com_categoria
+    cat = Categoria(nome="Outros recebimentos", tipo="Receita")
+    db.add(cat); db.commit(); db.refresh(cat)
+    conta = _conta(db)
+    # Estado inconsistente legado: movimentacao + categoria juntas.
+    t = _trans(db, conta, valor=25.0, tipo="Receita",
+               movimentacao="transferencia", categoria_id=cat.id)
+    _limpar_movimentacao_com_categoria(db.get_bind())
+    db.expire_all()
+    assert db.query(Transacao).get(t.id).movimentacao is None

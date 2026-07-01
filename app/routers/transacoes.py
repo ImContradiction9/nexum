@@ -422,6 +422,12 @@ def atualizar_transacao(
             t.categoria_id = novo
             t.categoria_origem = "manual"
             cat_changed = True
+        # Dar uma categoria REAL desfaz a marcação de movimentação interna: a
+        # transação passa a contar como receita/despesa de verdade nos totais
+        # (invariante: movimentacao ⟹ categoria_id NULL). Ex.: um "recebimento"
+        # que a heurística flagou como transferência mas é receita de verdade.
+        if novo and t.movimentacao:
+            t.movimentacao = None
 
     if "atribuicao_id" in dados:
         novo = dados["atribuicao_id"]

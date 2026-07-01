@@ -539,6 +539,25 @@ def _aplicar_migracoes(engine):
     _backfill_orcado(engine)
     # v1.7 — remove unique constraint do nome da conta (permite múltiplas com mesmo nome)
     _drop_unique_index_se_existir(engine, "contas", "nome")
+    # v1.22 — resolve estado inconsistente movimentacao + categoria: categorizar
+    # vence (ex.: "Outros recebimentos" flagado como transferência ficava fora
+    # dos totais). Limpa a flag onde há categoria de verdade.
+    _limpar_movimentacao_com_categoria(engine)
+
+
+def _limpar_movimentacao_com_categoria(engine):
+    """Zera transacoes.movimentacao onde há categoria_id setada (estado
+    inconsistente). O invariante é movimentacao ⟹ categoria_id NULL; uma categoria
+    explícita é o sinal mais forte (a transação é receita/despesa real, não um
+    movimento interno). Idempotente."""
+    from sqlalchemy import text
+    try:
+        with engine.begin() as conn:
+            conn.execute(text(
+                "UPDATE transacoes SET movimentacao = NULL "
+                "WHERE movimentacao IS NOT NULL AND categoria_id IS NOT NULL"))
+    except Exception:
+        pass
 
 
 def _migrar_movimentacao(engine):
