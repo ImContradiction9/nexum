@@ -1110,9 +1110,13 @@ def evolucao_patrimonio(db: Session = Depends(get_db)):
     for m in meses:
         acc += delta_mes.get(m, 0.0)
         patr_m = patr_recon.get(m)
-        # Rendimento ACUMULADO até o mês = patrimônio − investido (custo). Sem
-        # patrimônio reconstruível, mantém o acumulado anterior (não inventa).
-        rend_acum = (patr_m - acc) if patr_m is not None else rend_acum_prev
+        # Rendimento ACUMULADO até o mês = soma do rendimento por tipo (reconstrução
+        # CDI-exata + histórico de mercado dos ETFs; mês atual = rentab ao vivo).
+        # NÃO usa o `patrimonio` (snapshot) pra isso: o snapshot é foto pontual (um
+        # dia do meio do mês, e o patrimonio_brl tem escopo diferente do investido
+        # reconstruído), o que criava saltos artificiais na decomposição
+        # aporte×rendimento (ex.: -1931 em jun e +2124 em jul).
+        rend_acum = sum(rend_tipo.get(m, {}).values())
         serie.append({
             "mes": m,
             "investido": round(max(acc, 0.0), 2),
