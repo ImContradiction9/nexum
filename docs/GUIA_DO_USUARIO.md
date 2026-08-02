@@ -31,13 +31,12 @@ A ordem recomendada para começar:
    corrente e cartão de crédito que você usa (Nubank, Santander, etc.). Informe o
    banco, o tipo (Conta Corrente ou Cartão de Crédito) e, se quiser, o titular —
    útil quando você administra contas de mais de uma pessoa da família.
-2. **Importe seus arquivos** — botão **"Importar arquivo"** no topo. O Nexum lê:
+2. **Importe seus arquivos** — botão **"Importar arquivo"** no topo. Você pode
+   selecionar **vários arquivos de uma vez** (eles entram numa fila e são
+   processados um a um). O Nexum lê:
    - **OFX** de conta corrente (extrato exportado do app do banco);
    - **PDF** de fatura de cartão de crédito (aceita PDF com senha — ele pede a
      senha na hora e pode salvá-la para os próximos meses).
-
-   Você pode selecionar **vários arquivos de uma vez**: eles entram numa fila e
-   são processados um a um.
 3. **Revise as categorias** — a maior parte das transações é categorizada
    automaticamente. O que ficar pendente aparece como "não categorizada" para
    você classificar (e o app **aprende** com suas escolhas).
