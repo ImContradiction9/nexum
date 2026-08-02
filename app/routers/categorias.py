@@ -1,6 +1,8 @@
 """Categorias: CRUD + reset de classificação. Extraído de main.py."""
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
+
+from .rede import _so_local
 
 from ..deps import get_db
 from ..database import Categoria, Transacao, Regra, Memoria, Atribuicao
@@ -72,13 +74,16 @@ def excluir_categoria(cid: int, db: Session = Depends(get_db)):
             f"usam esta categoria. Considere desativar (PATCH ativo=false) "
             f"ou reatribuir antes."
         )
+    # Memória aprendida apontando pra categoria excluída viraria órfã (SQLite não
+    # aplica FK) e a próxima categorização atribuiria uma categoria inexistente.
+    db.query(Memoria).filter(Memoria.categoria_id == cid).delete(synchronize_session=False)
     db.delete(c)
     db.commit()
     return {"ok": True}
 
 
 @router.post("/api/categorias/reset-classificacao")
-def resetar_classificacao(db: Session = Depends(get_db)):
+def resetar_classificacao(request: Request, db: Session = Depends(get_db)):
     """
     Operação destrutiva mas reversível pelo usuário:
       1) Limpa categoria_id e categoria_origem de TODAS as transações
@@ -90,6 +95,7 @@ def resetar_classificacao(db: Session = Depends(get_db)):
          transações nem regras nem atribuições associadas após a reorganização)
     Atribuições NÃO são tocadas (decisão do usuário).
     """
+    _so_local(request)   # destrutivo: só do próprio PC, não de um aparelho da rede
     # === 1. Limpa classificação atual ===
     n_trans_total = db.query(Transacao).count()
     db.query(Transacao).update({

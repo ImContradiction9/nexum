@@ -892,15 +892,17 @@ def evolucao_patrimonio(db: Session = Depends(get_db)):
     histórico completo) + 'patrimonio' (snapshots; preenche de quando começou a
     gravar). Só considera ativos com objetivo='patrimonio' (exclui reservas de
     aquisição de bens, ex: carro/casa)."""
-    # Objetivo por ativo: só 'patrimonio' entra no gráfico.
-    objetivo_por_ativo = {a.id: (a.objetivo or "patrimonio")
-                          for a in db.query(Ativo.id, Ativo.objetivo).all()}
+    # Só ativos ATIVOS com objetivo='patrimonio' entram no gráfico — mesmo
+    # escopo do resumo/cards, senão o último ponto diverge da "posição atual"
+    # (ex.: ativo soft-deletado com saldo CDI ainda > 0).
+    entra_por_ativo = {a.id: (bool(a.ativo) and (a.objetivo or "patrimonio") == "patrimonio")
+                       for a in db.query(Ativo.id, Ativo.objetivo, Ativo.ativo).all()}
     ops = db.query(OperacaoInvestimento).order_by(OperacaoInvestimento.data).all()
     delta_mes = {}
     for op in ops:
         if not op.data:
             continue
-        if objetivo_por_ativo.get(op.ativo_id, "patrimonio") != "patrimonio":
+        if not entra_por_ativo.get(op.ativo_id, True):
             continue
         if op.tipo in ("Compra", "Aporte"):
             sinal = 1
@@ -929,10 +931,10 @@ def evolucao_patrimonio(db: Session = Depends(get_db)):
     # demais ativos = custo acumulado (sem ganho/perda, que só medimos quando há
     # cotação). Onde existe um snapshot real (dias em que o app rodou), ele VENCE
     # a reconstrução — então "hoje" reflete o valor de mercado de verdade.
-    ativos_patr = [a for a in db.query(Ativo).all()
+    ativos_patr = [a for a in db.query(Ativo).filter(Ativo.ativo == True).all()
                    if (a.objetivo or "patrimonio") == "patrimonio"]
     ops_por_ativo = {}
-    for op in ops:   # já filtrados por objetivo=patrimonio acima
+    for op in ops:   # o filtro de escopo é aplicado via ativos_patr
         ops_por_ativo.setdefault(op.ativo_id, []).append(op)
     serie_cdi = _cdi_serie(db)
     hoje = date.today()

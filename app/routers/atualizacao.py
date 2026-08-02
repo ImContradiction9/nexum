@@ -11,13 +11,14 @@ import sys
 import threading
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from ..deps import get_db, DB_PATH
 from ..database import Configuracao
 from .. import __version__
 from .. import atualizacao as up
+from .rede import _so_local
 
 router = APIRouter()
 
@@ -58,7 +59,10 @@ def status(db: Session = Depends(get_db)):
 
 
 @router.post("/api/atualizacao/instalar")
-def instalar(db: Session = Depends(get_db)):
+def instalar(request: Request, db: Session = Depends(get_db)):
+    # Só do próprio PC: baixa e EXECUTA um instalador — um aparelho da rede não
+    # pode disparar isso (com config aberta daria pra apontar pra um repo malicioso).
+    _so_local(request)
     if not _instalado():
         raise HTTPException(400, "Auto-instalação só funciona no app instalado (.exe).")
     info = up.verificar(__version__, _repo(db))

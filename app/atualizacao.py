@@ -92,17 +92,32 @@ def verificar(versao_atual, repo):
 
 
 def baixar(url, destino):
-    """Baixa `url` para `destino` (Path). Escreve em .part e renomeia no fim."""
+    """Baixa `url` para `destino` (Path). Escreve em .part e renomeia no fim.
+
+    Confere o tamanho contra o Content-Length: um EOF "limpo" no meio do
+    download deixaria um .exe truncado que seria executado pelo updater."""
     destino = Path(destino)
     destino.parent.mkdir(parents=True, exist_ok=True)
     tmp = destino.with_suffix(destino.suffix + ".part")
     req = urllib.request.Request(url, headers={"User-Agent": _UA})
     with urllib.request.urlopen(req, timeout=120) as r, open(tmp, "wb") as f:
+        try:
+            esperado = int(r.headers.get("Content-Length") or 0)
+        except (TypeError, ValueError):
+            esperado = 0
+        baixado = 0
         while True:
             chunk = r.read(256 * 1024)
             if not chunk:
                 break
             f.write(chunk)
+            baixado += len(chunk)
+    if esperado and baixado != esperado:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise IOError(f"Download incompleto ({baixado} de {esperado} bytes)")
     os.replace(tmp, destino)
     return destino
 

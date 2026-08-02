@@ -51,6 +51,11 @@ def _planilha(titulo, colunas, linhas):
         cel.alignment = Alignment(horizontal="center")
     for r, linha in enumerate(linhas, start=2):
         for c, valor in enumerate(linha, start=1):
+            # Texto começando com =, + ou @ seria interpretado como FÓRMULA pelo
+            # Excel (openpyxl marca "=..." como formula) — injeção via descrição
+            # digitada. Prefixa com apóstrofo (marcador de texto do Excel).
+            if isinstance(valor, str) and valor[:1] in ("=", "+", "@"):
+                valor = "'" + valor
             cel = ws.cell(row=r, column=c, value=valor)
             fmt = colunas[c - 1][1]
             if fmt and valor is not None:

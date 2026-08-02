@@ -68,6 +68,18 @@ def test_irma_com_mesmos_sobrenomes_nao_e_transferencia():
     )
 
 
+def test_primeiro_nome_por_palavra_inteira_nao_por_substring():
+    # "Andre" não pode casar dentro de "Andreia" (outra pessoa): o match do
+    # 1º nome é por palavra inteira, não substring.
+    nomes = ["Andre Souza Lima"]
+    assert not _eh_transferencia_interconta(
+        "Pix Recebido - Andreia Souza Lima - ***.222.333-**", nomes
+    )
+    assert _eh_transferencia_interconta(
+        "Pix Recebido - Andre Souza Lima - ***.222.333-**", nomes
+    )
+
+
 # ----------------------------------------------------------------------------
 # Fixtures locais
 # ----------------------------------------------------------------------------
@@ -188,6 +200,21 @@ def test_categorizar_limpa_movimentacao(db):
     assert t.categoria_id == cat.id
     padrao = listar_transacoes(mes=None, data_inicio=None, data_fim=None, db=db)
     assert t.id in [i["id"] for i in padrao["items"]]   # não mais escondida
+
+
+def test_atualizar_em_massa_limpa_movimentacao(db):
+    """Mesmo invariante do PATCH individual: dar categoria REAL em massa também
+    desfaz a marcação de movimentação interna."""
+    from app.routers.transacoes import atualizar_em_massa
+    cat = Categoria(nome="Outros recebimentos", tipo="Receita")
+    db.add(cat); db.commit(); db.refresh(cat)
+    conta = _conta(db)
+    t = _trans(db, conta, valor=25.0, tipo="Receita",
+               movimentacao="transferencia", categoria_origem="movimentacao")
+    atualizar_em_massa({"ids": [t.id], "categoria_id": cat.id}, db=db)
+    db.refresh(t)
+    assert t.movimentacao is None
+    assert t.categoria_id == cat.id
 
 
 def test_migracao_conserta_movimentacao_com_categoria(db):

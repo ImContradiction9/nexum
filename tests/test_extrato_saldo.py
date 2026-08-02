@@ -104,3 +104,27 @@ def test_migracao_preserva_saldos_que_encadeiam(db):
         for f in db.query(Fatura).filter(Fatura.conta_id == conta.id).all()
     )
     assert saldos == [(0.0, 500.0), (500.0, 700.0)]
+
+def test_migracao_nao_zera_quando_ha_buraco_de_importacao(db):
+    """Jan e mar importados (fev teve movimento mas não foi importado): a
+    diferença de saldo entre eles é movimento REAL do mês faltante, não saldo
+    podre — a migração não pode destruir os saldos corretos dos dois arquivos."""
+    from app.database import _corrigir_saldos_ofx_inconfiaveis as _mig
+    from app.database import Conta as _C, Fatura as _F
+    conta = _C(nome="Itaú", tipo="Conta Corrente")
+    db.add(conta); db.commit(); db.refresh(conta)
+    db.add(_F(banco="Itaú", conta_id=conta.id, mes_referencia="01/2026",
+              periodo_inicio=date(2026, 1, 1), periodo_fim=date(2026, 1, 31),
+              saldo_inicial=0.0, saldo_final=500.0))
+    # Fevereiro NÃO importado; março abre em 900 (movimentos reais de fev).
+    db.add(_F(banco="Itaú", conta_id=conta.id, mes_referencia="03/2026",
+              periodo_inicio=date(2026, 3, 1), periodo_fim=date(2026, 3, 31),
+              saldo_inicial=900.0, saldo_final=1200.0))
+    db.commit()
+
+    _mig(db.get_bind())
+
+    for f in db.query(_F).filter(_F.conta_id == conta.id).all():
+        db.refresh(f)
+        assert f.saldo_inicial is not None    # preservado (não dá pra julgar com gap)
+        assert f.saldo_final is not None

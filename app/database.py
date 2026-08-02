@@ -665,19 +665,34 @@ def _corrigir_saldos_ofx_inconfiaveis(engine):
     'snapshot atual' do banco, não o saldo do fim do período.
 
     Detecção: dentro de uma mesma conta, faturas confiáveis encadeiam — o
-    saldo_inicial de um mês == saldo_final do mês anterior. Se QUALQUER par
-    consecutivo não encadeia, os saldos daquela conta vêm do LEDGERBAL atual
-    (ex.: Santander) e não servem; zera todos pra cair no cálculo acumulado.
+    saldo_inicial de um mês == saldo_final do mês anterior. Se um par de
+    extratos ADJACENTES não encadeia, os saldos daquela conta vêm do LEDGERBAL
+    atual (ex.: Santander) e não servem; zera todos pra cair no cálculo acumulado.
+
+    Só compara pares realmente adjacentes (início do atual até ~10 dias após o
+    fim do anterior): com buraco de importação no meio (jan e mar sem fev), a
+    diferença de saldo é movimento real do período faltante, não saldo podre —
+    zerar aí destruiria saldos corretos, sem volta.
 
     Idempotente: depois de zerar, as linhas saem do SELECT (saldos NULL) e
     nenhuma quebra é mais detectada.
     """
     from sqlalchemy import text
     from collections import defaultdict
+    from datetime import date as _date, timedelta as _td
+
+    def _as_date(v):
+        if isinstance(v, _date):
+            return v
+        try:
+            return _date.fromisoformat(str(v)[:10])
+        except (ValueError, TypeError):
+            return None
+
     with engine.begin() as conn:
         try:
             rows = conn.execute(text(
-                "SELECT id, conta_id, periodo_inicio, saldo_inicial, saldo_final "
+                "SELECT id, conta_id, periodo_inicio, saldo_inicial, saldo_final, periodo_fim "
                 "FROM faturas "
                 "WHERE saldo_inicial IS NOT NULL AND saldo_final IS NOT NULL "
                 "ORDER BY conta_id, periodo_inicio"
@@ -690,6 +705,12 @@ def _corrigir_saldos_ofx_inconfiaveis(engine):
         contas_quebradas = set()
         for conta_id, fts in por_conta.items():
             for prev, cur in zip(fts, fts[1:]):
+                prev_fim = _as_date(prev[5])
+                cur_ini = _as_date(cur[2])
+                # Sem datas de período ou com buraco entre extratos, não dá pra
+                # julgar o encadeamento — não zera por causa desse par.
+                if not prev_fim or not cur_ini or cur_ini > prev_fim + _td(days=10):
+                    continue
                 # saldo_inicial do atual deve bater com saldo_final do anterior
                 if abs((cur[3] or 0) - (prev[4] or 0)) > 0.01:
                     contas_quebradas.add(conta_id)

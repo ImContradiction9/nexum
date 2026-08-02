@@ -1,10 +1,25 @@
 """Testes do backup automático (app/backup.py)."""
+import sqlite3
+
 from app import backup
 
 
-def _criar_db(path, conteudo=b"dados"):
-    path.write_bytes(conteudo)
+def _criar_db(path):
+    """SQLite de verdade: a cópia usa a API de backup do sqlite3."""
+    con = sqlite3.connect(str(path))
+    con.execute("CREATE TABLE t (x)")
+    con.execute("INSERT INTO t VALUES ('dados')")
+    con.commit()
+    con.close()
     return str(path)
+
+
+def _ler_valor(path):
+    con = sqlite3.connect(str(path))
+    try:
+        return con.execute("SELECT x FROM t").fetchone()[0]
+    finally:
+        con.close()
 
 
 def test_backup_cria_copia(tmp_path):
@@ -14,7 +29,19 @@ def test_backup_cria_copia(tmp_path):
     pasta = tmp_path / "backups"
     copias = list(pasta.glob("financeiro-*.db"))
     assert len(copias) == 1
-    assert copias[0].read_bytes() == b"dados"
+    assert _ler_valor(copias[0]) == "dados"
+
+
+def test_backup_consistente_com_conexao_aberta(tmp_path):
+    # Cenário do backup pré-atualização: o app está RODANDO (conexão aberta).
+    db = _criar_db(tmp_path / "financeiro.db")
+    con = sqlite3.connect(db)
+    try:
+        destino = backup.fazer_backup(db, forcar=True)
+        assert destino is not None
+        assert _ler_valor(destino) == "dados"
+    finally:
+        con.close()
 
 
 def test_backup_nao_duplica_no_mesmo_dia(tmp_path):

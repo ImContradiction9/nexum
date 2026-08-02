@@ -425,6 +425,11 @@ def _eh_transferencia_interconta(descricao: str, nomes_familia: list = None) -> 
     """
     desc_lower = (descricao or "").lower()
 
+    def _tem_palavra(palavra: str) -> bool:
+        # Palavra INTEIRA, não substring: "andre" não pode casar "andreia"
+        # (seria outra pessoa marcada como transferência).
+        return re.search(r"(?<!\w)" + re.escape(palavra) + r"(?!\w)", desc_lower) is not None
+
     nome_bate = False
     for nome in (nomes_familia or []):
         if not nome:
@@ -437,8 +442,8 @@ def _eh_transferencia_interconta(descricao: str, nomes_familia: list = None) -> 
         # Exige: 1º nome presente (≥4 chars, pra não casar substring curto) E pelo
         # menos 2 partes do nome na descrição. Irmãos têm o mesmo sobrenome, então
         # sem o 1º nome bater não é a mesma pessoa.
-        if len(primeiro) >= 4 and primeiro in desc_lower \
-                and sum(1 for p in partes if p in desc_lower) >= 2:
+        if len(primeiro) >= 4 and _tem_palavra(primeiro) \
+                and sum(1 for p in partes if _tem_palavra(p)) >= 2:
             nome_bate = True
             break
 
@@ -630,9 +635,14 @@ def importar_ofx(session: Session, ofx_path: str, conta_id_override: int = None)
         else:
             fitid_dedup = fitid
 
+        # Dedup só contra OUTRAS fontes/faturas — nunca contra o próprio arquivo
+        # sendo importado (mesma regra do PDF): com FITID inválido (hash genérico),
+        # dois lançamentos reais idênticos no mesmo extrato (ex.: dois pedágios de
+        # mesmo valor no mesmo dia) são ambos válidos e devem entrar.
         existente = session.query(Transacao).filter(
             Transacao.hash_dedup == fitid_dedup,
             Transacao.conta_id == conta.id,
+            or_(Transacao.fatura_id != fatura.id, Transacao.fatura_id.is_(None)),
         ).first()
 
         eh_suspeita = bool(existente)

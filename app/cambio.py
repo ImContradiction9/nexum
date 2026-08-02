@@ -26,7 +26,9 @@ _SERIES = {"USD": 1, "EUR": 21619}  # USD/BRL (série 1), EUR/BRL (série 21619,
 
 _BCB_ULTIMO = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.{serie}/dados/ultimos/1?formato=json"
 _CONFIG_SYNC = "cambio_sync_em"
+_CONFIG_FALHA = "cambio_falha_em"     # última tentativa que falhou por completo
 _INTERVALO_SYNC_HORAS = 6
+_BACKOFF_FALHA_MIN = 10               # após falha total, re-tenta em minutos (não em horas)
 
 
 # --------------------------------------------------------------------------
@@ -89,13 +91,23 @@ def _precisa_sincronizar(db: Session) -> bool:
         return True
 
 
+def _em_backoff_falha(db: Session) -> bool:
+    em = _cfg_get(db, _CONFIG_FALHA)
+    if not em:
+        return False
+    try:
+        return (datetime.now() - datetime.fromisoformat(em)) < timedelta(minutes=_BACKOFF_FALHA_MIN)
+    except ValueError:
+        return False
+
+
 def sincronizar(db: Session, forcar: bool = False) -> dict:
     """Atualiza o cache das cotações no BCB. Tolerante a offline.
 
     Só vai à rede se o cache estiver velho (>6h) ou se `forcar`. Nunca levanta:
     em erro de rede, mantém o que já tem em cache.
     """
-    if not forcar and not _precisa_sincronizar(db):
+    if not forcar and (not _precisa_sincronizar(db) or _em_backoff_falha(db)):
         return {"ok": True, "atualizado": False, "erro": None}
 
     atualizou = False
@@ -118,7 +130,14 @@ def sincronizar(db: Session, forcar: bool = False) -> dict:
                     _cfg_set(db, f"cambio_{moeda.lower()}", taxa)
                     _cfg_set(db, f"cambio_{moeda.lower()}_data", data_ref or "")
                     atualizou = True
-            _cfg_set(db, _CONFIG_SYNC, datetime.now().isoformat())
+            # Falha TOTAL (nada baixado): não carimba o sync — senão fica 6h sem
+            # re-tentar mesmo com a internet voltando 1 min depois. Marca só um
+            # backoff curto pra não martelar a rede a cada request.
+            if atualizou or erro is None:
+                _cfg_set(db, _CONFIG_SYNC, datetime.now().isoformat())
+                _cfg_set(db, _CONFIG_FALHA, "")
+            else:
+                _cfg_set(db, _CONFIG_FALHA, datetime.now().isoformat())
         db.commit()
     except Exception:
         db.rollback()

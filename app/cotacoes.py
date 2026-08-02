@@ -25,11 +25,13 @@ from .database import Configuracao
 
 _CACHE_KEY = "cotacoes_cache"
 _SYNC_KEY = "cotacoes_sync_em"
+_FALHA_KEY = "cotacoes_falha_em"
 _CACHE_MEM = "cotacoes:cache"          # chave do cache em memória do dict parseado
 _CACHE_MEM_TTL = 600                    # backstop; invalida na escrita (sincronizar)
 _YAHOO_HIST = ("https://query1.finance.yahoo.com/v8/finance/chart/{sym}"
                "?period1={p1}&period2={p2}&interval=1mo")
 _HIST_SYNC_KEY = "cotacoes_hist_sync_em"
+_HIST_FALHA_KEY = "cotacoes_hist_falha_em"
 _HIST_INTERVALO_HORAS = 24             # histórico mensal muda devagar; 1x/dia basta
 _INTERVALO_HORAS = 3
 _YAHOO = "https://query1.finance.yahoo.com/v8/finance/chart/{sym}?interval=1d&range=1d"
@@ -137,6 +139,19 @@ def _precisa_hist(db: Session) -> bool:
         return True
 
 
+_BACKOFF_FALHA_MIN = 10   # após falha total de rede, re-tenta em minutos
+
+
+def _em_backoff_falha(db: Session, chave: str) -> bool:
+    em = _cfg_get(db, chave)
+    if not em:
+        return False
+    try:
+        return (datetime.now() - datetime.fromisoformat(em)) < timedelta(minutes=_BACKOFF_FALHA_MIN)
+    except ValueError:
+        return False
+
+
 def sincronizar_historico(db: Session, tickers, fx_moedas, desde, forcar: bool = False) -> dict:
     """Baixa o fechamento MENSAL (Yahoo) de cada ativo de renda variável e do
     câmbio das moedas estrangeiras, gravando em CotacaoMensal (cache local).
@@ -145,7 +160,7 @@ def sincronizar_historico(db: Session, tickers, fx_moedas, desde, forcar: bool =
     desde: data (date) da 1ª operação — limite inferior do histórico.
     Lazy (1x/dia) e tolerante a offline."""
     from .database import CotacaoMensal
-    if not forcar and not _precisa_hist(db):
+    if not forcar and (not _precisa_hist(db) or _em_backoff_falha(db, _HIST_FALHA_KEY)):
         return {"ok": True, "atualizado": False, "n": 0, "erro": None}
     if not desde:
         return {"ok": True, "atualizado": False, "n": 0, "erro": None}
@@ -175,7 +190,13 @@ def sincronizar_historico(db: Session, tickers, fx_moedas, desde, forcar: bool =
             else:
                 db.add(CotacaoMensal(sym=sym, mes=mes, fechamento=close, moeda=moeda or moeda_fb))
             n += 1
-    _cfg_set(db, _HIST_SYNC_KEY, datetime.now().isoformat())
+    # Falha total (nada baixado): não carimba as 24h de lazy — marca só um
+    # backoff curto, senão a 1ª abertura offline trava o histórico por um dia.
+    if n > 0 or erro is None:
+        _cfg_set(db, _HIST_SYNC_KEY, datetime.now().isoformat())
+        _cfg_set(db, _HIST_FALHA_KEY, "")
+    else:
+        _cfg_set(db, _HIST_FALHA_KEY, datetime.now().isoformat())
     try:
         db.commit()
     except Exception:
@@ -219,7 +240,7 @@ def sincronizar(db: Session, ativos, forcar: bool = False) -> dict:
     Lazy: só vai à rede se o cache estiver velho (>3h) ou `forcar`. Tolerante a
     offline — em erro, mantém o que já tem.
     """
-    if not forcar and not _precisa(db):
+    if not forcar and (not _precisa(db) or _em_backoff_falha(db, _FALHA_KEY)):
         return {"ok": True, "atualizado": False, "n": 0, "erro": None}
 
     cache = _ler_cache_raw(db)   # vamos MUTAR: lê do banco, não do cache em memória
@@ -248,7 +269,12 @@ def sincronizar(db: Session, ativos, forcar: bool = False) -> dict:
     try:
         with db.no_autoflush:
             _cfg_set(db, _CACHE_KEY, json.dumps(cache))
-            _cfg_set(db, _SYNC_KEY, datetime.now().isoformat())
+            # Falha total: só backoff curto (não as 3h do lazy) — ver histórico.
+            if n > 0 or erro is None:
+                _cfg_set(db, _SYNC_KEY, datetime.now().isoformat())
+                _cfg_set(db, _FALHA_KEY, "")
+            else:
+                _cfg_set(db, _FALHA_KEY, datetime.now().isoformat())
         db.commit()
     except Exception:
         db.rollback()

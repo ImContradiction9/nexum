@@ -31,7 +31,9 @@ _BCB_URL = (
     "?formato=json&dataInicial={ini}&dataFinal={fim}"
 )
 _CONFIG_SYNC = "cdi_sync_em"          # ISO datetime da última sincronização
+_CONFIG_FALHA = "cdi_falha_em"        # ISO datetime da última tentativa falhada
 _INTERVALO_SYNC_HORAS = 6             # não bate na rede mais que isso (sem forçar)
+_BACKOFF_FALHA_MIN = 10               # após falha de rede, segura re-tentativas (min)
 _DIAS_UTEIS_ANO = 252
 
 
@@ -49,7 +51,7 @@ def _baixar_bcb(inicio: date, fim: date, tentativas: int = 3) -> list[tuple[date
     ultimo_erro = None
     for _ in range(max(1, tentativas)):
         try:
-            with urllib.request.urlopen(req, timeout=20, context=ctx) as resp:
+            with urllib.request.urlopen(req, timeout=10, context=ctx) as resp:
                 dados = json.loads(resp.read().decode("utf-8"))
             break
         except Exception as e:
@@ -73,6 +75,11 @@ def _ultima_data_cache(db: Session):
     return row[0] if row else None
 
 
+def _primeira_data_cache(db: Session):
+    row = db.query(CDIDiario.data).order_by(CDIDiario.data.asc()).first()
+    return row[0] if row else None
+
+
 def _precisa_sincronizar(db: Session) -> bool:
     cfg = db.query(Configuracao).filter(Configuracao.chave == _CONFIG_SYNC).first()
     if not cfg or not cfg.valor:
@@ -90,6 +97,29 @@ def _marcar_sincronizado(db: Session):
         cfg = Configuracao(chave=_CONFIG_SYNC, valor="")
         db.add(cfg)
     cfg.valor = datetime.now().isoformat()
+    # Sucesso limpa o backoff de falha
+    falha = db.query(Configuracao).filter(Configuracao.chave == _CONFIG_FALHA).first()
+    if falha and falha.valor:
+        falha.valor = ""
+
+
+def _marcar_falha(db: Session):
+    cfg = db.query(Configuracao).filter(Configuracao.chave == _CONFIG_FALHA).first()
+    if not cfg:
+        cfg = Configuracao(chave=_CONFIG_FALHA, valor="")
+        db.add(cfg)
+    cfg.valor = datetime.now().isoformat()
+
+
+def _em_backoff_falha(db: Session) -> bool:
+    cfg = db.query(Configuracao).filter(Configuracao.chave == _CONFIG_FALHA).first()
+    if not cfg or not cfg.valor:
+        return False
+    try:
+        falha = datetime.fromisoformat(cfg.valor)
+    except ValueError:
+        return False
+    return (datetime.now() - falha) < timedelta(minutes=_BACKOFF_FALHA_MIN)
 
 
 def sincronizar(db: Session, desde: date | None = None, forcar: bool = False) -> dict:
@@ -100,13 +130,26 @@ def sincronizar(db: Session, desde: date | None = None, forcar: bool = False) ->
 
     Retorna um resumo {ok, atualizado, ultima_data, dias_baixados, erro}.
     """
-    if not forcar and not _precisa_sincronizar(db):
-        return {"ok": True, "atualizado": False, "ultima_data": _iso(_ultima_data_cache(db)),
-                "dias_baixados": 0, "erro": None}
+    # Retro-preenchimento: se surgiu uma operação mais antiga que o início do
+    # cache (ex.: aporte de 2023 cadastrado com cache começando em 2024), os dias
+    # anteriores não têm taxa e renderiam ZERO silenciosamente. Nesse caso baixa
+    # desde `desde`, mesmo dentro da janela lazy de 6h.
+    primeira = _primeira_data_cache(db)
+    retro = bool(desde and primeira and desde < primeira)
+
+    if not forcar:
+        # Backoff pós-falha: sem ele, com o BCB fora do ar cada endpoint da aba
+        # tentava de novo (3×20s) e a página travava ~1 min por request.
+        if _em_backoff_falha(db):
+            return {"ok": False, "atualizado": False, "ultima_data": _iso(_ultima_data_cache(db)),
+                    "dias_baixados": 0, "erro": "falha recente; aguardando nova tentativa"}
+        if not retro and not _precisa_sincronizar(db):
+            return {"ok": True, "atualizado": False, "ultima_data": _iso(_ultima_data_cache(db)),
+                    "dias_baixados": 0, "erro": None}
 
     hoje = date.today()
     ultima = _ultima_data_cache(db)
-    if forcar and desde:
+    if desde and (forcar or retro):
         inicio = desde
     elif ultima:
         inicio = ultima + timedelta(days=1)
@@ -125,6 +168,8 @@ def sincronizar(db: Session, desde: date | None = None, forcar: bool = False) ->
     try:
         novos = _baixar_bcb(inicio, hoje)
     except Exception as e:  # offline / timeout / API fora do ar
+        _marcar_falha(db)
+        _commit_tolerante(db)
         return {"ok": False, "atualizado": False, "ultima_data": _iso(ultima),
                 "dias_baixados": 0, "erro": str(e)}
 

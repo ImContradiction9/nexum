@@ -73,8 +73,11 @@ def extrato_conta(
         # (exclusive: a primeira transação visível ainda não foi aplicada)
         if transacoes:
             primeira_data = transacoes[0].data
+            # Mesmo filtro da listagem (só o movimento real do banco = o pai):
+            # filhas de divisão duplicariam o valor no ajuste.
             ajuste_q = db.query(Transacao).filter(
                 Transacao.conta_id == conta_id,
+                Transacao.parte_de_id.is_(None),
                 Transacao.data > conta.saldo_inicial_data,
                 Transacao.data < primeira_data,
             ).all()
@@ -97,6 +100,7 @@ def extrato_conta(
             primeira_data = transacoes[0].data
             anteriores = db.query(Transacao).filter(
                 Transacao.conta_id == conta_id,
+                Transacao.parte_de_id.is_(None),   # filhas duplicariam o pai
                 Transacao.data < primeira_data,
             ).all()
             saldo_inicial = sum(

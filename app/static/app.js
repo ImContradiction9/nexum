@@ -26,6 +26,10 @@ function financeiro() {
       por_conta: [],
       por_forma: [],
       por_parcelamento: { a_vista: 0, parcelada_primeira: 0, parcelada_anteriores: 0 },
+      // Precisa existir antes do 1º /api/dashboard responder: os bindings do
+      // card avaliam dashboard.emprestimos.* já no primeiro paint (x-show não
+      // impede a avaliação) — sem isso, TypeError no console.
+      emprestimos: { emprestado: 0, recebido: 0, saldo: 0 },
     },
 
     previsao: { meses: [] },
@@ -180,6 +184,13 @@ function financeiro() {
       descricao: '',
       escopo: 'patrimonio_total',
       escopo_tipos: [],
+      // Precisam existir desde o início: o modal usa x-show (não x-if), então
+      // bindings tipo metaModal.escopo_ativos.includes(...) são avaliados antes
+      // de abrirMetaNova()/abrirMetaEdit() preencherem — sem isso, TypeError.
+      escopo_ativos: [],
+      escopo_excluir_ativos: [],
+      objetivo: 'patrimonio',
+      moeda: 'BRL',
       valor_atual_manual: 0,
       valor_alvo: 0,
       data_alvo: '',
@@ -405,6 +416,7 @@ function financeiro() {
         await this.carregarCatalogos();
         await this.carregarDashboard();
         if (this.view === 'transacoes') await this.carregarTransacoes();
+        if (this.view === 'orcamento') await this.carregarOrcamentos();
         if (this.view === 'investimentos') await this.carregarInvestimentos();
         if (this.view === 'metas') await this.carregarMetas();
         if (this.view === 'extrato') {
@@ -907,21 +919,35 @@ function financeiro() {
       this[fn](...args);
     },
 
+    // Invalida o cache de abas após uma mutação feita FORA delas (ex.: marcar
+    // transferência no Extrato muda os totais de Transações) — senão a aba
+    // reaberta em <30s mostra dados velhos.
+    invalidarAbas(...views) {
+      for (const v of views) this._abaCarregadaEm[v] = 0;
+    },
+
     async carregarTransacoes() {
-      this._abaCarregadaEm.transacoes = Date.now();
       const params = new URLSearchParams();
       Object.entries(this.filtros).forEach(([k, v]) => {
         if (v !== '' && v !== false && v !== null) params.set(k, v);
       });
-      const data = await fetch('/api/transacoes?' + params).then(r => r.json());
-      this.transacoes = data.items;
-      this.totalTransacoes = data.total;
-      this.totaisListagem = {
-        receitas: data.total_receitas || 0,
-        despesas: data.total_despesas || 0,
-        saldo: data.saldo || 0,
-      };
-      this.nSuspeitas = data.n_suspeitas || 0;
+      try {
+        const data = await fetch('/api/transacoes?' + params).then(r => r.json());
+        this.transacoes = data.items;
+        this.totalTransacoes = data.total;
+        this.totaisListagem = {
+          receitas: data.total_receitas || 0,
+          despesas: data.total_despesas || 0,
+          saldo: data.saldo || 0,
+        };
+        this.nSuspeitas = data.n_suspeitas || 0;
+        // Só marca a aba como fresca quando a carga DEU CERTO — senão uma falha
+        // silenciava o erro e ainda bloqueava novas tentativas por 30s.
+        this._abaCarregadaEm.transacoes = Date.now();
+      } catch (e) {
+        this._abaCarregadaEm.transacoes = 0;
+        this.notificar('Erro ao carregar transações', 'erro');
+      }
     },
 
     // === Suspeitas de duplicata ===
@@ -1005,9 +1031,16 @@ function financeiro() {
      * Calcula range de datas baseado no preset selecionado.
      * Retorna { data_inicio, data_fim } ou null (modo mês padrão).
      */
+    // "YYYY-MM-DD" no fuso LOCAL. (toISOString é UTC: no Brasil, das 21h às
+    // 23h59 devolveria a data de amanhã.)
+    fmtDataLocal(d = new Date()) {
+      const p = (n) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+    },
+
     calcularRangePeriodo() {
       const hoje = new Date();
-      const fmt = (d) => d.toISOString().slice(0, 10);
+      const fmt = (d) => this.fmtDataLocal(d);
 
       switch (this.periodoPreset) {
         case 'mes':
@@ -1451,7 +1484,7 @@ function financeiro() {
       // Preenche conta padrão (Dinheiro, se existir)
       const contaDinheiro = this.contas.find(c => c.tipo === 'Carteira') || this.contas[0];
       this.novaTransacaoForm = {
-        data: new Date().toISOString().slice(0, 10),
+        data: this.fmtDataLocal(),
         descricao: '',
         valor: '',
         tipo: 'Despesa',
@@ -1610,7 +1643,8 @@ function financeiro() {
         }
         await this.carregarDashboard();
         if (this.view === 'transacoes') await this.carregarTransacoes();
-        if (this.view === 'faturas') await this.carregarFaturas();
+        // A tela de arquivos vive em Configurações > Arquivos (não existe view 'faturas')
+        if (this.view === 'config' && this.subView === 'arquivos') await this.carregarFaturas();
         return;
       }
 
@@ -1686,6 +1720,16 @@ function financeiro() {
       this.modalSenha.senha = '';
       // Reprocessa o PDF atual da fila com a senha
       await this.processarProximoUpload(senha);
+    },
+
+    cancelarSenha() {
+      // Pula este arquivo e CONTINUA a fila — senão os próximos uploads nunca
+      // são processados e o resumo final não aparece.
+      this.estatsImport.erros++;
+      this.estatsImport.detalhes.push(`${this.modalSenha.filename}: cancelado pelo usuário (senha)`);
+      this.modalSenha = { show: false, filename: '', senha: '', file: null };
+      this.filaUpload.shift();
+      this.processarProximoUpload();
     },
 
     async confirmarEscolhaConta() {
@@ -1915,6 +1959,7 @@ function financeiro() {
     async excluirFatura(id) {
       if (!confirm('Excluir esta fatura E TODAS as transações dela? Esta ação é irreversível.')) return;
       await fetch(`/api/faturas/${id}`, { method: 'DELETE' });
+      this.invalidarAbas('transacoes');   // as transações excluídas sumiriam só após 30s
       await this.carregarFaturas();
       await this.carregarDashboard();
     },
@@ -2556,6 +2601,9 @@ function financeiro() {
         if (!r.ok) throw new Error('patch falhou');
         t.movimentacao = valor;
         if (valor) { t.categoria = null; t.categoria_icone = null; }
+        // Muda os totais de Transações e do Dashboard — invalida os caches
+        this.invalidarAbas('transacoes');
+        this.carregarDashboard();
         this.notificar(
           valor === 'fatura' ? 'Marcada como pagamento de fatura'
           : valor === 'transferencia' ? 'Marcada como transferência'
@@ -3225,6 +3273,7 @@ function financeiro() {
       this.notificar(editando ? `Ativo "${f.nome}" atualizado` : `Ativo "${f.nome}" criado`, 'ok');
       this.formAtivoAberto = false;
       this.editandoAtivoId = null;
+      this.invalidarAbas('metas');   // metas calculam progresso a partir da carteira
       await this.carregarInvestimentos();
     },
 
@@ -3237,6 +3286,7 @@ function financeiro() {
         return;
       }
       this.notificar(data.soft_delete ? `Ativo desativado (${data.n_operacoes} operações preservadas)` : 'Ativo excluído', 'ok');
+      this.invalidarAbas('metas');
       await this.carregarInvestimentos();
     },
 
@@ -3252,6 +3302,7 @@ function financeiro() {
       });
       if (r.ok) {
         this.notificar('Saldo atualizado', 'ok');
+        this.invalidarAbas('metas');
         await this.carregarInvestimentos();
       } else {
         this.notificar('Erro ao atualizar', 'erro');
@@ -3259,7 +3310,7 @@ function financeiro() {
     },
 
     abrirFormOperacao(ativo, tipo) {
-      const hoje = new Date().toISOString().slice(0, 10);
+      const hoje = this.fmtDataLocal();
       this.opForm = {
         tipo: tipo,
         data: hoje,
@@ -3318,6 +3369,7 @@ function financeiro() {
       this.notificar(`${f.tipo} registrada`, 'ok');
       const ativoId = this.formOpAtivoId;
       this.formOpAtivoId = null;
+      this.invalidarAbas('metas');
       await this.carregarInvestimentos();
       await this.carregarOperacoes(ativoId);
     },
@@ -3327,6 +3379,7 @@ function financeiro() {
       const r = await fetch(`/api/investimentos/operacoes/${opId}`, { method: 'DELETE' });
       if (r.ok) {
         this.notificar('Operação excluída', 'ok');
+        this.invalidarAbas('metas');
         await this.carregarInvestimentos();
         await this.carregarOperacoes(ativoId);
       } else {

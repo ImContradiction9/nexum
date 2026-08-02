@@ -8,7 +8,7 @@ pré-migração continua disponível.
 """
 from __future__ import annotations
 
-import shutil
+import sqlite3
 from datetime import datetime
 from pathlib import Path
 
@@ -50,12 +50,28 @@ def fazer_backup(db_path: str, max_backups: int = MAX_BACKUPS,
         while destino.exists():
             destino = pasta / f"{_PREFIXO}{carimbo}-{n}{_SUFIXO}"
             n += 1
-        shutil.copy2(origem, destino)
+        # API de backup do SQLite (não cópia crua de arquivo): consistente mesmo
+        # com o app RODANDO (backup pré-atualização, forcar=True) — um copy2 com
+        # transação/journal pendente podia gerar backup corrompido.
+        _copiar_sqlite(origem, destino)
         _rotacionar(pasta, max_backups)
         return str(destino)
     except Exception:
         # Backup nunca pode impedir o app de subir.
         return None
+
+
+def _copiar_sqlite(origem: Path, destino: Path):
+    """Copia o banco via sqlite3.backup (snapshot consistente, mesmo em uso)."""
+    src = sqlite3.connect(str(origem))
+    try:
+        dst = sqlite3.connect(str(destino))
+        try:
+            src.backup(dst)
+        finally:
+            dst.close()
+    finally:
+        src.close()
 
 
 def _rotacionar(pasta: Path, max_backups: int):

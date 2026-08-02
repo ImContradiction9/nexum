@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func
+from sqlalchemy import and_, case, func, not_
 from sqlalchemy.orm import Session, joinedload
 
 from ..deps import get_db
@@ -636,7 +636,11 @@ def dashboard(
         ).scalar() or 0
         if n_ant > 0:
             tem_mes_anterior = True
-            base_ant = db.query(Transacao).filter(Transacao.mes_referencia == mes_anterior)
+            base_ant = db.query(Transacao).filter(
+                Transacao.mes_referencia == mes_anterior,
+                # Mesmo filtro da base do mês atual — senão o comparativo infla
+                (Transacao.suspeita_duplicata == False) | Transacao.suspeita_duplicata.is_(None),
+            )
             base_ant = base_ant.filter((Transacao.dividida == False) | Transacao.dividida.is_(None))
             if not incluir_especiais:
                 base_ant = base_ant.filter(Transacao.movimentacao.is_(None))
@@ -866,29 +870,45 @@ def evolucao_mensal(meses: int = 12, incluir_especiais: bool = False,
                   if regime == "pagamento" else Transacao.data)
     mes_chave = func.strftime("%m/%Y", campo_data)   # "MM/YYYY" do regime escolhido
 
-    q = db.query(
-        mes_chave,
-        Transacao.tipo,
-        func.sum(Transacao.valor),
-    ).filter((Transacao.dividida == False) | Transacao.dividida.is_(None))
+    # Mesmas regras dos cards do dashboard (senão o gráfico diverge deles no
+    # mesmo mês): exclui suspeitas de duplicata e trata abatedoras (Receita com
+    # categoria de Despesa ≠ Cashback) reduzindo a despesa, não somando à receita.
+    valor = func.coalesce(Transacao.valor, 0.0)
+    abatedora = and_(
+        Transacao.tipo == "Receita",
+        Transacao.categoria_id.isnot(None),
+        func.coalesce(Categoria.tipo, "") == "Despesa",
+        func.coalesce(Categoria.nome, "") != "Cashback",
+    )
+    rec_expr = func.sum(case(
+        (and_(Transacao.tipo == "Receita", not_(abatedora)), valor), else_=0.0))
+    desp_expr = func.sum(case(
+        (abatedora, -valor),
+        (Transacao.tipo != "Receita", valor),
+        else_=0.0,
+    ))
+    q = db.query(mes_chave, rec_expr, desp_expr).select_from(Transacao).outerjoin(
+        Categoria, Transacao.categoria_id == Categoria.id
+    ).filter(
+        (Transacao.dividida == False) | Transacao.dividida.is_(None),
+        (Transacao.suspeita_duplicata == False) | Transacao.suspeita_duplicata.is_(None),
+    )
     if not incluir_especiais:
         q = q.filter(Transacao.movimentacao.is_(None))
         if ids_esp:
             q = q.filter(
                 ~Transacao.categoria_id.in_(ids_esp) | Transacao.categoria_id.is_(None)
             )
-    rows = q.group_by(mes_chave, Transacao.tipo).all()
+    rows = q.group_by(mes_chave).all()
 
-    # rows: lista de (mes_ref "MM/YYYY", tipo, total)
+    # rows: lista de (mes_ref "MM/YYYY", receitas, despesas)
     por_mes = {}
-    for mes, tipo, total in rows:
+    for mes, rec, desp in rows:
         if not mes:
             continue
         por_mes.setdefault(mes, {"receitas": 0, "despesas": 0})
-        if tipo == "Receita":
-            por_mes[mes]["receitas"] += total or 0
-        else:
-            por_mes[mes]["despesas"] += total or 0
+        por_mes[mes]["receitas"] += rec or 0
+        por_mes[mes]["despesas"] += desp or 0
 
     # Ordena por (ano, mês)
     def _key(m):

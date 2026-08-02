@@ -1764,7 +1764,7 @@
                   <div class="font-mono text-zinc-200" x-text="formatarBRL(m.aporte_mensal_necessario) + '/mês'"></div>
                   <div class="text-zinc-600 text-[10px] mt-0.5"
                        x-show="m.meses_restantes !== null"
-                       x-text="m.meses_restantes.toFixed(1) + ' meses restantes'"></div>
+                       x-text="m.meses_restantes != null ? m.meses_restantes.toFixed(1) + ' meses restantes' : ''"></div>
                 </div>
               </template>
               <template x-if="m.prazo_vencido">
@@ -3046,7 +3046,7 @@
         <span class="text-xs text-zinc-600">geralmente CPF (só números) ou data de nascimento</span>
       </div>
       <div class="flex justify-end gap-2">
-        <button @click="modalSenha.show = false" class="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200">Cancelar</button>
+        <button @click="cancelarSenha()" class="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200">Cancelar</button>
         <button @click="confirmarSenhaModal()" class="bg-amber-500 hover:bg-amber-400 text-zinc-950 px-4 py-2 text-sm rounded">
           Tentar com esta senha
         </button>

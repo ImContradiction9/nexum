@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ..deps import get_db
-from ..database import Atribuicao, Transacao, Regra
+from ..database import Atribuicao, Transacao, Regra, Divisao, Memoria
 from ..utils import ordena_pt
 
 router = APIRouter()
@@ -56,12 +56,18 @@ def excluir_atribuicao(aid: int, db: Session = Depends(get_db)):
         raise HTTPException(404)
     n_trans = db.query(Transacao).filter(Transacao.atribuicao_id == aid).count()
     n_regras = db.query(Regra).filter(Regra.atribuicao_id == aid).count()
-    if n_trans > 0 or n_regras > 0:
+    n_div = db.query(Divisao).filter(Divisao.atribuicao_id == aid).count()
+    if n_trans > 0 or n_regras > 0 or n_div > 0:
         raise HTTPException(
             400,
-            f"Não posso excluir: {n_trans} transação(ões) e {n_regras} regra(s) "
-            f"usam esta atribuição. Considere desativar ou reatribuir antes."
+            f"Não posso excluir: {n_trans} transação(ões), {n_regras} regra(s) "
+            f"e {n_div} divisão(ões) usam esta atribuição. Considere desativar "
+            f"ou reatribuir antes."
         )
+    # Memória aprendida apontando pra atribuição excluída viraria órfã (SQLite
+    # não aplica FK) e a próxima classificação atribuiria um id inexistente.
+    db.query(Memoria).filter(Memoria.atribuicao_id == aid).update(
+        {"atribuicao_id": None}, synchronize_session=False)
     db.delete(a)
     db.commit()
     return {"ok": True}

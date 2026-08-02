@@ -93,11 +93,10 @@ def cobertura_arquivos(meses: int = 12, db: Session = Depends(get_db)):
         Conta.tipo.in_(["Cartão de Crédito", "Conta Corrente"]),
     ).all()
 
-    # 2. Pega lista de meses (últimos N a partir do mais recente com transações)
-    # Usa o mês mais recente que existe no sistema como referência
+    # 2. Eixo de meses: últimos N CONTÍNUOS terminando no mês mais recente com
+    # transações. (Antes o eixo vinha só dos meses existentes — um mês sem
+    # transação em conta NENHUMA sumia do eixo e nunca aparecia como buraco.)
     todos_meses = [r[0] for r in db.query(Transacao.mes_referencia).distinct().all()]
-    if not todos_meses:
-        return {"meses": [], "contas": []}
 
     # Ordena meses (formato MM/YYYY)
     def mes_to_int(m):
@@ -107,10 +106,16 @@ def cobertura_arquivos(meses: int = 12, db: Session = Depends(get_db)):
         except:
             return 0
 
-    todos_meses.sort(key=mes_to_int, reverse=True)
-    meses_recentes = todos_meses[:meses]
-    # Ordena cronologicamente pra exibição (mais antigo → mais recente)
-    meses_recentes.sort(key=mes_to_int)
+    ints_validos = [v for v in (mes_to_int(m) for m in todos_meses if m) if v > 0]
+    if not ints_validos:
+        return {"meses": [], "contas": []}
+    fim = max(ints_validos)
+    meses_recentes = []
+    for v in range(fim - meses + 1, fim + 1):
+        if v <= 0:
+            continue
+        yy, mm = (v - 1) // 12, (v - 1) % 12 + 1
+        meses_recentes.append(f"{mm:02d}/{yy}")
 
     # 3. Mapa de faturas por (conta_id, mes_referencia)
     faturas_existentes = set()
@@ -119,6 +124,31 @@ def cobertura_arquivos(meses: int = 12, db: Session = Depends(get_db)):
         chave = (f.conta_id, f.mes_referencia)
         faturas_existentes.add(chave)
         fatura_por_chave[chave] = f.id
+
+    # 3b. Meses que TÊM transações por (conta_id, mes_referencia). Um extrato OFX
+    # de conta corrente cobre vários meses num arquivo só, então a Fatura fica
+    # rotulada num mês (ex.: 06) mas contém transações de outros (ex.: 05). O mês
+    # está coberto se há transações dele — não só se existe Fatura com aquele
+    # mes_referencia. Guarda um fatura_id representativo pra abrir/excluir o arquivo.
+    # Só transações vindas de ARQUIVO (fatura_id preenchido): um lançamento manual
+    # avulso não pode marcar o mês como coberto — mascararia o buraco de importação
+    # que o mapa existe pra detectar.
+    meses_com_tx = set()
+    fatura_por_tx = {}
+    ids_contas = [c.id for c in contas]
+    if ids_contas:
+        for conta_id, mes_ref, fatura_id in db.query(
+            Transacao.conta_id, Transacao.mes_referencia, Transacao.fatura_id
+        ).filter(
+            Transacao.conta_id.in_(ids_contas),
+            Transacao.fatura_id.isnot(None),
+        ).distinct().all():
+            if not mes_ref:
+                continue
+            chave = (conta_id, mes_ref)
+            meses_com_tx.add(chave)
+            if chave not in fatura_por_tx:
+                fatura_por_tx[chave] = fatura_id
 
     # 4. Monta resultado
     resultado_contas = []
@@ -130,11 +160,14 @@ def cobertura_arquivos(meses: int = 12, db: Session = Depends(get_db)):
         # Primeiro passe: identifica quais meses têm arquivo
         cobertura = []
         for m in meses_recentes:
-            tem = (c.id, m) in faturas_existentes
+            # Coberto se há Fatura rotulada nesse mês OU transações desse mês
+            # (extrato OFX multi-mês rotula a fatura num mês só).
+            tem = (c.id, m) in faturas_existentes or (c.id, m) in meses_com_tx
             cobertura.append({
                 "mes": m,
                 "tem": tem,
-                "fatura_id": fatura_por_chave.get((c.id, m)) if tem else None,
+                "fatura_id": (fatura_por_chave.get((c.id, m))
+                              or fatura_por_tx.get((c.id, m))) if tem else None,
             })
 
         # Segundo passe: identifica buracos (mês sem arquivo entre dois meses com arquivo)
@@ -197,11 +230,23 @@ def cobertura_arquivos(meses: int = 12, db: Session = Depends(get_db)):
 
 @router.delete("/api/faturas/{fid}")
 def excluir_fatura(fid: int, db: Session = Depends(get_db)):
-    """Exclui uma fatura E todas suas transações."""
+    """Exclui uma fatura E todas suas transações (incluindo partes de divisão,
+    que nascem sem fatura_id), limpando referências que apontariam pra linhas
+    inexistentes — SQLite não aplica FK, então órfãos seguiriam nos totais."""
     f = db.query(Fatura).get(fid)
     if not f:
         raise HTTPException(404)
-    db.query(Transacao).filter(Transacao.fatura_id == fid).delete()
+    ids = [r[0] for r in db.query(Transacao.id).filter(Transacao.fatura_id == fid).all()]
+    if ids:
+        db.query(Transacao).filter(Transacao.parte_de_id.in_(ids)).delete(
+            synchronize_session=False)
+        db.query(Transacao).filter(Transacao.estorno_de_id.in_(ids)).update(
+            {"estorno_de_id": None}, synchronize_session=False)
+        db.query(Transacao).filter(Transacao.duplicata_de_id.in_(ids)).update(
+            {"duplicata_de_id": None}, synchronize_session=False)
+    db.query(Transacao).filter(Transacao.pagamento_de_fatura_id == fid).update(
+        {"pagamento_de_fatura_id": None, "conciliada": False}, synchronize_session=False)
+    db.query(Transacao).filter(Transacao.fatura_id == fid).delete(synchronize_session=False)
     db.delete(f)
     db.commit()
     return {"ok": True}

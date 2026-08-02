@@ -404,6 +404,9 @@ def _calcular_progresso_meta(meta: Meta, saldos: dict) -> dict:
     # os saldos da carteira já estão em BRL.
     moeda_meta = (meta.moeda or "BRL").upper()
     taxa_cambio = (saldos.get("cambio", {}) or {}).get(moeda_meta)
+    # Meta em moeda estrangeira SEM cotação em cache: 1:1 encolhe o alvo (US$ 5k
+    # viraria R$ 5k) e o percentual explode — não pode valer pra marcar atingida.
+    cambio_indisponivel = moeda_meta != "BRL" and not taxa_cambio
     if not taxa_cambio:
         taxa_cambio = 1.0   # sem cotação (BRL ou ainda não sincronizado) → 1:1
     valor_alvo_brl = (meta.valor_alvo or 0) * taxa_cambio
@@ -466,6 +469,9 @@ def _calcular_progresso_meta(meta: Meta, saldos: dict) -> dict:
         "aporte_mensal_necessario": round(aporte_mensal_necessario, 2) if aporte_mensal_necessario is not None else None,
         "meses_projetados": round(meses_projetados, 1) if meses_projetados is not None else None,
         "projecao_data_atingimento": projecao_data,
+        # True quando meta em moeda estrangeira está sendo exibida com câmbio 1:1
+        # por falta de cotação — o percentual não é confiável nesse estado.
+        "cambio_indisponivel": cambio_indisponivel,
     }
 
 
@@ -520,10 +526,11 @@ def listar_metas(incluir_inativas: bool = False, db: Session = Depends(get_db)):
     saldos = _calcular_saldos_brl(db)
     serializadas = [_serializar_meta(m, saldos) for m in metas]
 
-    # Marca atingida_em automaticamente quando bate 100% (uma vez).
+    # Marca atingida_em automaticamente quando bate 100% (uma vez). Nunca com
+    # câmbio indisponível: o alvo 1:1 é artificialmente baixo e a marca é permanente.
     mudou = False
     for m, s in zip(metas, serializadas):
-        if s["percentual"] >= 100 and not m.atingida_em:
+        if s["percentual"] >= 100 and not m.atingida_em and not s.get("cambio_indisponivel"):
             m.atingida_em = date.today()
             s["atingida_em"] = m.atingida_em.isoformat()
             mudou = True
